@@ -88,6 +88,18 @@ node --test        # 25 tests
 UI/wiring (keybindings, `St.Clipboard`, GTK windows) is validated manually in the shell —
 see `EVIDENCE.md`.
 
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module map, lifecycle, S1/S2/S3 flow diagrams, state model, HTTP contract, settings. |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Pure/impure split, build/install/reload, tests, live smoke test, debugging. |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Failure modes: enable after install, hotkey conflicts, gateway/model errors, hangs. |
+| [`docs/adr/`](docs/adr/README.md) | Decision log (ADR-0001..0007). |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history (Keep a Changelog). |
+| [`EVIDENCE.md`](EVIDENCE.md) | E2E validation runbook + recorded evidence. |
+| [`llms.txt`](llms.txt) | Compact index for AI agents. |
+
 ## Known limitations / notes (POC)
 
 - **Wayland**: `St.Clipboard` only sees clipboard text the shell owns; a shell reload
