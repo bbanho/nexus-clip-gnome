@@ -18,7 +18,7 @@
       <summary>API endpoint</summary>
     </key>
     <key name="model-name" type="s">
-      <default>'qwen2.5:7b'</default>
+      <default>'gemini-2.5-flash'</default>
       <summary>Model name</summary>
     </key>
     <key name="api-key" type="s">
