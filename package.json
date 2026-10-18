@@ -1,0 +1,10 @@
+{
+  "name": "nexus-clip-gnome",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GNOME Shell extension: clipboard-driven LLM pipeline (stack + FIFO) over an OpenAI-compatible /v1 endpoint",
+  "scripts": {
+    "test": "node --test"
+  }
+}

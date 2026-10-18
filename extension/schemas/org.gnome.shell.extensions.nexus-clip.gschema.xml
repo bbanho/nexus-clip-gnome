@@ -13,5 +13,25 @@
       <default>['&lt;Super&gt;v']</default>
       <summary>Loop operation hotkey</summary>
     </key>
+    <key name="api-endpoint" type="s">
+      <default>'http://localhost:8010/v1/chat/completions'</default>
+      <summary>API endpoint</summary>
+    </key>
+    <key name="model-name" type="s">
+      <default>'qwen2.5:7b'</default>
+      <summary>Model name</summary>
+    </key>
+    <key name="api-key" type="s">
+      <default>'random'</default>
+      <summary>API key</summary>
+    </key>
+    <key name="presets" type="s">
+      <default><![CDATA['{"fix-pt":"Corrija o português, mantendo o sentido e o tom.","summarize":"Resuma em no máximo 2 linhas, em português.","explain-code":"Explique este código de forma concisa, em português.","translate-en":"Traduza para inglês natural, mantendo termos técnicos quando necessário."}']]></default>
+      <summary>Preset prompts</summary>
+    </key>
+    <key name="stream" type="b">
+      <default>false</default>
+      <summary>Stream responses</summary>
+    </key>
   </schema>
 </schemalist>
