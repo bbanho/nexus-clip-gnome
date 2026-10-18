@@ -1,0 +1,16 @@
+{
+  "uuid": "nexus-clip@bbanho",
+  "name": "Nexus Clip",
+  "description": "Clipboard-driven LLM pipeline: stack + FIFO, inference via an OpenAI-compatible /v1 endpoint. Reads and writes the clipboard only when you press its shortcuts.",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "settings-schema": "org.gnome.shell.extensions.nexus-clip",
+  "version": 1,
+  "author": "bbanho"
+}

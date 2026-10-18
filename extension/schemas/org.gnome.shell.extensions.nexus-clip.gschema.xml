@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.nexus-clip" path="/org/gnome/shell/extensions/nexus-clip/">
+    <key name="hotkey-push" type="as">
+      <default>['&lt;Super&gt;c']</default>
+      <summary>Push to stack hotkey</summary>
+    </key>
+    <key name="hotkey-choose" type="as">
+      <default>['&lt;Super&gt;x']</default>
+      <summary>Choose from stack hotkey</summary>
+    </key>
+    <key name="hotkey-loop" type="as">
+      <default>['&lt;Super&gt;v']</default>
+      <summary>Loop operation hotkey</summary>
+    </key>
+  </schema>
+</schemalist>
