@@ -11,6 +11,7 @@ install: compile-schemas
 	cp extension/metadata.json $(EXT_DIR)/
 	cp extension/extension.js $(EXT_DIR)/
 	cp extension/prefs.js $(EXT_DIR)/
+	cp -r extension/lib $(EXT_DIR)/
 	cp -r extension/schemas $(EXT_DIR)/
 	chmod -R u+wX $(EXT_DIR)
 
