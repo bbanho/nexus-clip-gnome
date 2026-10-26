@@ -32,7 +32,7 @@ The `shortcuts` setting is a JSON array. Each object has this shape:
 ```json
 {
   "id": "sc_rewrite",
-  "label": "Revisar texto",
+  "label": "Review text",
   "accel": "<Alt><Super>r",
   "mode": "process",
   "prompt": "Revise a gramática sem mudar o sentido."

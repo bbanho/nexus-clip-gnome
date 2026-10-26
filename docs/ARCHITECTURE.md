@@ -150,7 +150,7 @@ sequenceDiagram
   U->>S: press <Alt><Super>c
   S->>St: loadStack + peek
   alt stack empty
-    S-->>U: notify("Pilha do Nexus vazia")
+    S-->>U: notify("Nexus stack is empty")
   else top exists
     S->>V: chat/stream(prompt + top.text)
     V-->>S: result
@@ -192,7 +192,8 @@ flowchart LR
 
 ### 4.6 Busy guard, cancellation, errors
 
-- Only one action runs at a time. A second keypress while busy notifies "Ocupado".
+- Only one action runs at a time. A second keypress while busy reports that an operation
+  is already in progress (Portuguese notification: `Ocupado`).
 - Each inference creates a `Gio.Cancellable`; `disable()` cancels it.
 - `v1client` applies the configured `request-timeout`; clipboard reads have a 3 s guard.
 - Errors are mapped to friendly notifications (gateway offline, 401/403, 404, 5xx,
@@ -299,10 +300,10 @@ A shortcut entry:
 ```json
 {
   "id": "sc_default_process",
-  "label": "Processar pilha",
+  "label": "Process stack",
   "accel": "<Alt><Super>c",
   "mode": "process",
-  "prompt": "Corrija o português, mantendo o sentido e o tom."
+  "prompt": "Correct the grammar while preserving the meaning and tone."
 }
 ```
 

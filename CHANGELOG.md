@@ -47,8 +47,9 @@ prompts. The system clipboard is now an explicit import/export boundary.
   ADR-0010 (result nodes on the stack).
 
 ### Changed
-- **Default shortcuts:** `<Alt><Super>v` = Importar e processar, `<Alt><Super>c` =
-  Processar pilha. The export action (`copy-top`) ships as an unbound template.
+- **Default shortcuts:** `<Alt><Super>v` = Import and process, `<Alt><Super>c` = Process
+  stack (UI labels: `Importar e processar` and `Processar pilha`). The export action
+  (`copy-top`) ships as an unbound template.
 - Every successful inference pushes a `kind: "result"` node with `parentId` pointing at
   the processed item; results can be chained.
 - Shortcuts are stored as a JSON array in `shortcuts` and mirrored into

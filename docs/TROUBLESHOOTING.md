@@ -2,17 +2,19 @@
 
 Symptom → cause → fix. See `docs/DEVELOPMENT.md` for commands.
 
-## The extension is installed but `make enable` says "não existe"
+## The extension is installed but `make enable` says "does not exist"
 
 **Cause:** on **Wayland** the running shell cannot see a newly installed extension.
-**Fix:** log out and back in (X11: `Alt+F2` → `r`), then `make enable`.
+**Fix:** log out and back in (X11: `Alt+F2` → `r`), then run `make enable`. On a
+Portuguese-language desktop, the corresponding message may be `não existe`.
 
 ## The shortcut does nothing
 
 1. The shell may not have loaded the extension:
    `gnome-extensions info nexus-clip@bbanho` → expect `State: ENABLED`.
-2. The shortcut may be **unbound**. The export template ships without a key. Open prefs
-   and check the row subtitle: **Definir…** means no key is assigned.
+2. The shortcut may be **unbound**. The export template ships without a key. Open
+   Preferences and check the row subtitle: **Set…** (UI: `Definir…`) means no key is
+   assigned.
 3. A **hotkey conflict** — another extension/app owns the combination. The bundled
    `llm-text-modifier` uses `<Ctrl><Super>o` / `<Ctrl><Super>p`. GNOME itself owns
    `<Super>v` (message tray), `<Super>a`, `<Super>m`, `<Super>s`, `<Super>n`, and the
@@ -42,41 +44,48 @@ make check && make install
 That is by design: **Nexus has its own clipboard** (the stack top). Inference never writes
 the system clipboard. To export:
 
-- bind the **Copiar topo do Nexus para o sistema** action to a key in prefs, or
-- bind **Mostrar pilha e fila**, select an item, and press `Enter`.
+- bind **Copy Nexus top to system** (UI: `Copiar topo do Nexus para o sistema`) to a key in
+  Preferences, or
+- bind **Show stack and queue** (UI: `Mostrar pilha e fila`), select an item, and press
+  `Enter`.
 
-The system clipboard is read only by **Importar do sistema + processar**.
+The system clipboard is read only by **Import from system and process** (UI:
+`Importar do sistema + processar`).
 
-## "Clipboard do sistema vazio" when I press Importar e processar
+## "System clipboard is empty" when I press Import and process
 
 - Copy the text immediately before pressing the shortcut. On Wayland the shell reads the
   clipboard at keypress time.
-- If the read stalls, a 3 s guard aborts with **"Tempo esgotado ao ler o clipboard"**
-  instead of leaving the action busy.
+- If the read stalls, a 3-second guard aborts with a timeout notification instead of
+  leaving the action busy. On a Portuguese-language desktop, the notification reads
+  `Tempo esgotado ao ler o clipboard` (“Timed out while reading the clipboard”).
 - Some apps (terminals with bracketed paste, password managers) do not expose plain text;
   copy from a normal text field.
 
-## Nothing happens / "Erro:" notifications
+## Nothing happens / error notifications
 
 - **Gateway down:** `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8010/health`
   → expect `200`.
 - **Wrong model:** the gateway serves **Gemini** (`gemini-2.5-flash`, `gemini-3-flash`, …);
-  an unknown id (e.g. `qwen2.5:7b`) returns HTTP 404 → `Endpoint ou modelo não encontrado`.
-  Set a valid `model-name` in prefs.
+  an unknown id (e.g. `qwen2.5:7b`) returns HTTP 404 → “Endpoint or model not found.” Set
+  a valid `model-name` in Preferences.
 - **Slow responses:** latency is variable (**2–27 s** observed). Streaming shows progress
   live in the bottom-right panel; the request timeout defaults to 90 s.
-- **Busy:** a second action while an inference runs notifies "Ocupado — aguarde a
-  operação atual". Wait or let it time out.
+- **Busy:** a second action while an inference runs is rejected. Wait for the current
+operation to finish or time out. The Portuguese notification is
+  `Ocupado — aguarde a operação atual` (“Busy — wait for the current operation”).
 
-## "Pilha do Nexus vazia"
+## "Nexus stack is empty"
 
-There is nothing to process. Use **Importar do sistema + processar** first, or process a
-result that is still on the stack. The Nexus stack is independent of the system clipboard;
-having text copied does not put it in Nexus.
+There is nothing to process. Use **Import from system and process** (UI:
+`Importar do sistema + processar`) first, or process a result that is still on the stack.
+The Nexus stack is independent of the system clipboard; copying text does not add it to
+Nexus.
 
 ## Shortcut capture does not work in prefs
 
-- Click **Definir…** first; the button must show "Pressione a combinação…".
+- Click **Set…** (UI: `Definir…`) first; the button must enter key-capture mode (shown in
+  Portuguese as `Pressione a combinação…` (“Press the key combination…”).
 - The combination must include at least one of `Super`, `Alt`, `Ctrl`, or `Hyper`.
 - `Esc` cancels capture; `Backspace` (with no modifier) clears the binding.
 - If the key is captured by GNOME (e.g. `<Super>v`), the shell may win silently. Use a
@@ -95,10 +104,11 @@ promise-job draining while a `GLib.MainLoop` runs. Use a **static import** (ADR-
 
 ## FIFO seems to stop mid-way
 
-- **Rodar próximo da fila** consumes exactly one prompt per activation, and only after a
-  successful inference. Press it repeatedly.
-- **Rodar fila inteira** drains the queue, saving after each step. If a step fails, the
-  completed steps remain on the stack and the failed/remaining prompts stay in the queue.
+- **Run next in queue** (UI: `Rodar próximo da fila`) consumes exactly one prompt per
+  activation, and only after a successful inference. Press it repeatedly.
+- **Run entire queue** (UI: `Rodar fila inteira`) drains the queue, saving after each step.
+  If a step fails, the completed steps remain on the stack and the failed/remaining
+  prompts stay in the queue.
 - Inspect `fifo.json` to see the remaining items.
 
 ## Reading the shell log

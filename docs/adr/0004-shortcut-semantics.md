@@ -16,7 +16,7 @@ Three global shortcuts with distinct, non-overlapping semantics:
 |--------|---------|----------|
 | S1 | `<Super>c` | Read clipboard → push onto LIFO stack → run active preset → write result to clipboard. |
 | S2 | `<Super>x` | Open the GTK chooser with the live response; the activated prompt is **enqueued** onto the FIFO. |
-| S3 | `<Super>v` | Consume **exactly one** FIFO item, run it against the current item, write the result to the clipboard, and notify the next step. |
+| S3 | `<Super>v` | Consume **exactly one** FIFO item, run it against the current item, write the result to the clipboard, and notify the user of the next step. |
 
 Defaults are remappable in prefs. Known collision risk: `<Super>v` vs. some terminal
 paste bindings — change it in prefs if needed.

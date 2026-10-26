@@ -27,8 +27,8 @@ first key of a JSON object). That had several problems:
 3. **Shortcuts are user data.** A JSON array in the `shortcuts` GSettings key:
    `{ id, label, accel, mode, prompt }`. Up to 12 entries. Each entry has its own prompt.
 4. **Defaults are two bound actions plus an unbound export template:**
-   - `<Alt><Super>v` → `push-process` ("Importar e processar").
-   - `<Alt><Super>c` → `process` ("Processar pilha").
+   - `<Alt><Super>v` → `push-process` (UI label: `Importar e processar`, “Import and process”).
+   - `<Alt><Super>c` → `process` (UI label: `Processar pilha`, “Process stack”).
    - `copy-top` → no key by default; capture one in prefs when needed.
 5. **Dynamic registration.** `Main.wm.addKeybinding` needs a schema key, so registered
    bindings are mirrored into `hotkey-slot-0..11`. The extension re-grabs only when the

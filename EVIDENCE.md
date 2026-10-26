@@ -18,7 +18,7 @@ the GJS Gio-store smoke test. `make smoke` exercises `chat()` and `stream()` liv
 
 ```
 make check:
-  node --test: 53 pass / 0 fail
+  node --test: 68 pass / 0 fail
   node --check: OK for extension.js, prefs.js, lib/*.js
   gjs -m tests/gjs-store-smoke.mjs: GJS store adapter OK
   glib-compile-schemas --strict: OK
@@ -52,7 +52,7 @@ gnome-extensions prefs nexus-clip@bbanho
 gsettings --schemadir extension/schemas list-recursively org.gnome.shell.extensions.nexus-clip
 ```
 
-Expected: the **Atalhos e prompts** group lists three entries — two bound
+Expected: the **Shortcuts and prompts** group (UI: `Atalhos e prompts`) lists three entries — two bound
 (`<Alt><Super>v`, `<Alt><Super>c`) and one unbound export template. `shortcuts` is a JSON
 array; `hotkey-slot-0`/`-1` mirror the two bound accelerators.
 
@@ -62,7 +62,7 @@ array; `hotkey-slot-0`/`-1` mirror the two bound accelerators.
 
 ## 3. Import + process (no system-clipboard write-back)
 
-1. Copy `este texto tem ums erro de portugues`.
+1. Copy `This sentense has a grammar error.`
 2. Press `<Alt><Super>v`.
 3. Paste into a scratch editor (should still be the **original** text, not the result).
 
@@ -73,7 +73,7 @@ tail -1 ~/.local/share/nexus-clip-gnome/history.jsonl
 
 Expected: a new `kind: "input"` node followed by a `kind: "result"` node whose `parentId`
 is the input's id; the system clipboard still holds the original text; the notification
-mentions "topo do Nexus".
+indicates that the result is now at the top of the Nexus stack.
 
 ```
 <PASTE OUTPUT HERE>
@@ -97,14 +97,16 @@ the previous top. The stack grows by one per press.
 
 ## 5. Export (explicit only)
 
-1. In prefs, give the **Copiar topo do Nexus para o sistema** template a key.
+1. In Preferences, assign a key to the **Copy Nexus top to system** template (UI:
+   `Copiar topo do Nexus para o sistema`).
 2. Press it.
 3. Paste into the scratch editor.
 
 Expected: the pasted text is the Nexus top. No inference path wrote the clipboard before
 this explicit export.
 
-Alternative: bind **Mostrar pilha e fila**, open the HUD, select a row, press `Enter`.
+Alternative: bind **Show stack and queue** (UI: `Mostrar pilha e fila`), open the HUD,
+select a row, and press `Enter`.
 
 ```
 <PASTE OUTPUT HERE>
@@ -112,9 +114,9 @@ Alternative: bind **Mostrar pilha e fila**, open the HUD, select a row, press `E
 
 ## 6. FIFO: enqueue, run-next, drain
 
-1. Bind/trigger **Enfileirar prompt** for two different prompts.
-2. Trigger **Rodar próximo da fila** once; check `fifo.json`.
-3. Trigger **Rodar fila inteira**; check `fifo.json` and `stack.json`.
+1. Bind/trigger **Queue prompt** (UI: `Enfileirar prompt`) for two different prompts.
+2. Trigger **Run next in queue** (UI: `Rodar próximo da fila`) once; check `fifo.json`.
+3. Trigger **Run entire queue** (UI: `Rodar fila inteira`); check `fifo.json` and `stack.json`.
 
 ```bash
 cat ~/.local/share/nexus-clip-gnome/fifo.json

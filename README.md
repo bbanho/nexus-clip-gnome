@@ -13,6 +13,10 @@ It connects to an OpenAI-compatible chat-completions endpoint.
 > **Project status:** proof of concept. See [scope and limitations](#status-and-limitations)
 > before relying on it for critical work.
 
+> **Interface language:** the current Preferences and notification labels are in
+> Portuguese. This English documentation gives English names first and includes the exact
+> Portuguese UI label in code formatting when needed to help locate the control.
+
 ## At a glance
 
 - **Import + process** selected/copied text with a shortcut and save both input and result
@@ -62,17 +66,17 @@ See [Development](docs/DEVELOPMENT.md) for packaging, reinstalling, and reload d
 3. Press **`Alt` + `Super` + `V`** to import that text into Nexus and process it with the
    shortcut's prompt.
 4. Press **`Alt` + `Super` + `C`** to process the current Nexus top again.
-5. To paste a result into another application, explicitly export it with **Copiar topo do
-   Nexus para o sistema**, or open **Mostrar pilha e fila**, select an item, and press
-   **Enter**.
+5. To paste a result into another application, explicitly export it with **Copy Nexus top
+   to system** (UI label: `Copiar topo do Nexus para o sistema`), or open **Show stack and
+   queue** (UI label: `Mostrar pilha e fila`), select an item, and press **Enter**.
 
 The defaults are:
 
 | Shortcut | Action | Clipboard behavior |
 |---|---|---|
-| `Alt` + `Super` + `V` | **Importar e processar** | Reads desktop clipboard; stores source and result in Nexus; does not write back. |
-| `Alt` + `Super` + `C` | **Processar pilha** | Sends the Nexus top for inference and stores the result in Nexus. |
-| Unbound template | **Copiar topo do Nexus para o sistema** | Explicitly exports the Nexus top to the desktop clipboard. |
+| `Alt` + `Super` + `V` | **Import and process** (`Importar e processar`) | Reads desktop clipboard; stores source and result in Nexus; does not write back. |
+| `Alt` + `Super` + `C` | **Process stack** (`Processar pilha`) | Sends the Nexus top for inference and stores the result in Nexus. |
+| Unbound template | **Copy Nexus top to system** (`Copiar topo do Nexus para o sistema`) | Explicitly exports the Nexus top to the desktop clipboard. |
 
 See the [User Guide](docs/USER_GUIDE.md) for all actions, queue behavior, and shortcuts.
 
@@ -81,9 +85,11 @@ See the [User Guide](docs/USER_GUIDE.md) for all actions, queue behavior, and sh
 - `stack.json` is the Nexus clipboard. The newest item is the top (**LIFO**).
 - Successful inferences create new result nodes linked to their source with `parentId`;
   processing a result again extends the chain.
-- `fifo.json` stores prompts (**FIFO**). `Rodar próximo da fila` runs one prompt;
-  `Rodar fila inteira` processes in order and saves each successful step.
-- **Desfazer** removes the newest Nexus item. It does not change the desktop clipboard.
+- `fifo.json` stores prompts (**FIFO**). **Run next in queue** (`Rodar próximo da fila`)
+  runs one prompt; **Run entire queue** (`Rodar fila inteira`) processes them in order and
+  saves each successful step.
+- **Undo** (`Desfazer`) removes the newest Nexus item. It does not change the desktop
+  clipboard.
 - The HUD viewer is built with GNOME Shell St/Clutter widgets. GTK is used only in the
   separate Preferences process, avoiding the old shell-freeze failure mode.
 

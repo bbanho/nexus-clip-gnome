@@ -80,7 +80,8 @@ make uninstall
 
 > **Wayland:** a freshly installed extension is invisible to the running shell. Reload it
 > by **logging out and back in** before `make enable` (X11: `Alt+F2` → `r`). This is why
-> `make enable` can print `A extensão ... não existe` straight after install.
+> `make enable` may report that the extension does not exist immediately after install
+> (Portuguese UI: `A extensão ... não existe`).
 
 > **Never create GTK widgets in the shell process.** That was the cause of the old
 > Super+X freeze (ADR-0009). In-shell UI belongs in `hud.js` and must use St/Clutter.
@@ -92,10 +93,12 @@ make uninstall
    ```bash
    gnome-extensions prefs nexus-clip@bbanho
    ```
-2. Expand a shortcut (or click **Adicionar**).
-3. Click **Definir…**, press the combination. `Esc` cancels; `Backspace` clears it.
+2. Expand a shortcut (or click **Add**; UI: `Adicionar`).
+3. Click **Set…** (UI: `Definir…`) and press the combination. `Esc` cancels;
+   `Backspace` clears it.
    At least one of `Super`, `Alt`, `Ctrl`, `Hyper` is required.
-4. Choose the **Ação**, edit the **Prompt** (for prompt-based actions), and give it a name.
+4. Choose the **Action** (UI: `Ação`), edit the **Prompt** for prompt-based actions, and
+   give the shortcut a name.
 
 Under the hood the list is a JSON array in the `shortcuts` key:
 
@@ -103,10 +106,10 @@ Under the hood the list is a JSON array in the `shortcuts` key:
 [
   {
     "id": "sc_default_push_process",
-    "label": "Importar e processar",
+    "label": "Import and process",
     "accel": "<Alt><Super>v",
     "mode": "push-process",
-    "prompt": "Corrija o português, mantendo o sentido e o tom."
+    "prompt": "Correct the grammar while preserving the meaning and tone."
   }
 ]
 ```
@@ -118,7 +121,7 @@ To script a change:
 
 ```bash
 gsettings --schemadir extension/schemas set org.gnome.shell.extensions.nexus-clip \
-  shortcuts '[{"id":"mine","label":"Resumir","accel":"<Alt><Super>r","mode":"push-process","prompt":"Resuma em 2 linhas."}]'
+  shortcuts '[{"id":"mine","label":"Summarize","accel":"<Alt><Super>r","mode":"push-process","prompt":"Summarize in two lines."}]'
 ```
 
 ## Debugging in the shell
@@ -135,8 +138,9 @@ cat ~/.local/share/nexus-clip-gnome/{stack,fifo}.json
 tail -n5 ~/.local/share/nexus-clip-gnome/history.jsonl
 ```
 
-Open the stack viewer by binding an action to the **Mostrar pilha e fila** mode. `Enter`
-copies the selected item to the system clipboard; `Esc` closes.
+Open the stack viewer by binding an action to **Show stack and queue** (UI label:
+`Mostrar pilha e fila`). `Enter` copies the selected item to the system clipboard; `Esc`
+closes the viewer.
 
 ## Conventions
 
