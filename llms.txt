@@ -17,6 +17,8 @@
 - extension/prefs.js — preferences: API / shortcuts (key capture + prompts) / Nexus / help
 - extension/schemas/org.gnome.shell.extensions.nexus-clip.gschema.xml — GSettings schema
 - docs/ARCHITECTURE.md — architecture, flows, state model, HTTP contract
+- docs/USER_GUIDE.md — actions, shortcuts, import/export, queue, and HUD usage
+- docs/CONFIGURATION.md — API settings, shortcut schema, GSettings, and local data files
 - docs/DEVELOPMENT.md — build/install/test/smoke workflow
 - docs/CRITICAL_POINTS.md — invariants (freeze, clipboard boundary, state) mapped to tests
 - docs/TROUBLESHOOTING.md — failure modes (including the old Super+X freeze)

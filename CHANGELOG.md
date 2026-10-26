@@ -8,6 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/TROUBLESHOOTING.md`, `docs/adr/`, `llms.txt`.
 - E2E validation runbook scaffold (`EVIDENCE.md`).
+- User guide (`docs/USER_GUIDE.md`) and settings/data reference (`docs/CONFIGURATION.md`);
+  README reorganized as a first-use and documentation landing page.
 - `docs/CRITICAL_POINTS.md`: freeze/clipboard/state invariants mapped to tests and gates.
 - Tests: shell-process boundary (no GTK/Adw/Node, explicit clipboard writes), schema and
   metadata contract, accelerator validation, and malformed persisted-state recovery.

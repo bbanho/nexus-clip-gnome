@@ -317,5 +317,9 @@ A shortcut entry:
 No tree/branching UI · no C++/llama.cpp · no providers other than OpenAI-compatible
 `/v1/chat/completions` · no audio/voice, embeddings, vector store, or prefix KV-cache.
 
-See `docs/adr/` for the decision log, `docs/DEVELOPMENT.md` for the dev workflow, and
-`docs/TROUBLESHOOTING.md` for failure modes.
+See [`USER_GUIDE.md`](USER_GUIDE.md) for action behavior,
+[`CONFIGURATION.md`](CONFIGURATION.md) for settings and data formats,
+[`CRITICAL_POINTS.md`](CRITICAL_POINTS.md) for invariants and their tests,
+[`docs/adr/`](adr/README.md) for the decision log,
+[`DEVELOPMENT.md`](DEVELOPMENT.md) for the dev workflow, and
+[`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for failure modes.
