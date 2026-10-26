@@ -1,23 +1,31 @@
 # EVIDENCE — End-to-end validation (GNOME 50.3 / Wayland)
 
-> Status: **PENDING MANUAL RUN**. The automated parts below are already green; the
-> interactive S1→S2→S3 run must be executed in a live GNOME Shell session and the
-> command outputs pasted here.
+> Status: automated checks green; the interactive run below must be executed in a live
+> GNOME Shell session and the outputs pasted here.
 
-## 0. Automated checks (run, capture output)
+## 0. Automated checks
 
 ```bash
 cd /var/home/bruno/repos/nexus-clip-gnome
-node --check extension/extension.js && for f in extension/lib/*.js; do node --check "$f"; done && echo "syntax OK"
-node --test
-glib-compile-schemas extension/schemas && echo "schemas OK"
-curl -s -o /dev/null -w 'gateway /health -> %{http_code}\n' http://localhost:8010/health
+make check
+make smoke        # requires the gateway on :8010
 ```
 
-Result:
+`make check` runs the schema compile, `node --test`, `node --check` on every module, and
+the GJS Gio-store smoke test. `make smoke` exercises `chat()` and `stream()` live.
+
+### Recorded (2026-10-26)
 
 ```
-<PASTE OUTPUT HERE>
+make check:
+  node --test: 53 pass / 0 fail
+  node --check: OK for extension.js, prefs.js, lib/*.js
+  gjs -m tests/gjs-store-smoke.mjs: GJS store adapter OK
+  glib-compile-schemas --strict: OK
+
+make smoke:
+  chat   => "ok"
+  stream => "ok" acc="ok"
 ```
 
 ## 1. Install + enable
@@ -25,12 +33,13 @@ Result:
 ```bash
 cd /var/home/bruno/repos/nexus-clip-gnome
 make install
-make enable                     # may require a shell reload on Wayland first
+# Wayland: log out and back in before enabling
+make enable
 gnome-extensions info nexus-clip@bbanho
 ls -R ~/.local/share/gnome-shell/extensions/nexus-clip@bbanho
 ```
 
-Result (expect `State: ENABLED` and `lib/` present in the installed dir):
+Expected: `State: ENABLED`; `lib/` present in the installed directory.
 
 ```
 <PASTE OUTPUT HERE>
@@ -39,73 +48,110 @@ Result (expect `State: ENABLED` and `lib/` present in the installed dir):
 ## 2. Configure
 
 ```bash
-gnome-extensions prefs nexus-clip@bbanho     # set endpoint/model/presets; ensure stream=false first
+gnome-extensions prefs nexus-clip@bbanho
 gsettings --schemadir extension/schemas list-recursively org.gnome.shell.extensions.nexus-clip
 ```
 
-Result:
+Expected: the **Atalhos e prompts** group lists three entries — two bound
+(`<Alt><Super>v`, `<Alt><Super>c`) and one unbound export template. `shortcuts` is a JSON
+array; `hotkey-slot-0`/`-1` mirror the two bound accelerators.
 
 ```
 <PASTE OUTPUT HERE>
 ```
 
-## 3. S1 — copy / stack / infer
+## 3. Import + process (no system-clipboard write-back)
 
-1. Copy some text (e.g. `este texto tem ums erro de portugues`).
-2. Press `<Super>c`.
+1. Copy `este texto tem ums erro de portugues`.
+2. Press `<Alt><Super>v`.
+3. Paste into a scratch editor (should still be the **original** text, not the result).
 
 ```bash
 cat ~/.local/share/nexus-clip-gnome/stack.json
 tail -1 ~/.local/share/nexus-clip-gnome/history.jsonl
 ```
 
-Expected: an item appears in `stack.json`; `history.jsonl` gains a line; the clipboard
-now holds the processed text. Result:
+Expected: a new `kind: "input"` node followed by a `kind: "result"` node whose `parentId`
+is the input's id; the system clipboard still holds the original text; the notification
+mentions "topo do Nexus".
 
 ```
 <PASTE OUTPUT HERE>
 ```
 
-## 4. S2 — live response + choose prompt → FIFO
+## 4. Process the Nexus top (chaining)
 
-1. Press `<Super>x`.
-2. The GTK window shows the response (live text if `stream=true`).
-3. Pick a preset in the list.
+1. Press `<Alt><Super>c`.
+2. Press it once more.
+
+```bash
+python3 -c 'import json;d=json.load(open("'"$HOME"'/.local/share/nexus-clip-gnome/stack.json"));print([(i["kind"],i["id"][-8:],(i.get("parentId") or "")[-8:]) for i in d["items"][:4]])'
+```
+
+Expected: each press pushes a new `result` node; the newest result's `parentId` points at
+the previous top. The stack grows by one per press.
+
+```
+<PASTE OUTPUT HERE>
+```
+
+## 5. Export (explicit only)
+
+1. In prefs, give the **Copiar topo do Nexus para o sistema** template a key.
+2. Press it.
+3. Paste into the scratch editor.
+
+Expected: the pasted text is the Nexus top. No inference path wrote the clipboard before
+this explicit export.
+
+Alternative: bind **Mostrar pilha e fila**, open the HUD, select a row, press `Enter`.
+
+```
+<PASTE OUTPUT HERE>
+```
+
+## 6. FIFO: enqueue, run-next, drain
+
+1. Bind/trigger **Enfileirar prompt** for two different prompts.
+2. Trigger **Rodar próximo da fila** once; check `fifo.json`.
+3. Trigger **Rodar fila inteira**; check `fifo.json` and `stack.json`.
 
 ```bash
 cat ~/.local/share/nexus-clip-gnome/fifo.json
+cat ~/.local/share/nexus-clip-gnome/stack.json
 ```
 
-Expected: the current result is on the clipboard; `fifo.json` contains the chosen prompt.
-Result:
-
-```
-<PASTE OUTPUT HERE>
-```
-
-## 5. S3 — stepwise loop with intermediate paste
-
-With several prompts in the FIFO, press `<Super>v>` once per step.
-
-```bash
-cat ~/.local/share/nexus-clip-gnome/fifo.json     # shrinks by exactly ONE per press
-```
-
-Expected: each press consumes one prompt, writes the result to the clipboard (paste it
-somewhere in between), reports the next prompt; when empty it reports the final result and
-`fifo.json` becomes `[]`. Result:
+Expected: `run-next` consumes exactly one prompt per activation and only after success;
+`drain` empties the queue, chaining each result into the next input.
 
 ```
 <PASTE OUTPUT HERE>
 ```
 
-## 6. Shell log (no exceptions)
+## 7. Freeze regression (the old Super+X bug)
+
+1. Confirm the extension no longer loads GTK:
+   ```bash
+   grep -rn "gi://Gtk\|gi://Adw\|selector" extension/extension.js extension/lib/
+   # expect no matches
+   ```
+2. Press the old bindings `<Super>x` and `<Super>c` (not bound by this extension).
+3. Press `<Alt><Super>v`, `<Alt><Super>c`, and open/close the HUD repeatedly.
+
+Expected: GNOME Shell remains responsive; no freeze; `journalctl` shows no GTK/selector
+errors from the extension.
+
+```
+<PASTE OUTPUT HERE>
+```
+
+## 8. Shell log (no exceptions)
 
 ```bash
 journalctl --user -b -o cat | grep -iE 'nexus-clip|JS ERROR|Gjs-CRITICAL' | tail -40
 ```
 
-Result (expect no `JS ERROR` / `Gjs-CRITICAL` from the extension):
+Expected: no `JS ERROR` / `Gjs-CRITICAL` from the extension.
 
 ```
 <PASTE OUTPUT HERE>

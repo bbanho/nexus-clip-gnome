@@ -11,12 +11,14 @@ prompts. State must live outside the repo, without credentials, and be forward-m
 
 ## Decision
 Persist three artifacts under `~/.local/share/nexus-clip-gnome/` (override with
-`NEXUS_CLIP_DATA_DIR`), managed by the pure `lib/store.js`:
+`NEXUS_CLIP_DATA_DIR`), managed by the pure `lib/store-core.js` (semantics),
+`lib/store-io.js` (serialization), and the GJS/Node adapters:
 
-- `stack.json` — `{ schemaVersion: 1, items: [ {id, parentId, text, ts} ] }`; `push` =
-  `unshift` (newest first); optional `maxItems` and `dedupe`.
-- `fifo.json` — `{ schemaVersion: 1, items: [ {id, prompt, ts} ] }`; `enqueue` = append,
-  `dequeue` = shift.
+- `stack.json` — `{ schemaVersion: 1, items: [ {id, parentId, text, ts, kind, prompt?} ] }`;
+  `push` = `unshift` (newest first); optional `maxItems` and `dedupe`. `kind` is `input` or
+  `result`; results keep the prompt that produced them.
+- `fifo.json` — `{ schemaVersion: 1, items: [ {id, prompt, label?, ts} ] }`; `enqueue` =
+  append, `dequeue` = shift.
 - `history.jsonl` — append-only inference log, one JSON object per line.
 
 Store APIs are **directory-first** (`saveStack(dir, state)`, `loadStack(dir)`,

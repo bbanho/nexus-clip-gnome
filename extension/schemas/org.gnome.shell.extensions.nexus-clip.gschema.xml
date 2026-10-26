@@ -1,18 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.nexus-clip" path="/org/gnome/shell/extensions/nexus-clip/">
-    <key name="hotkey-push" type="as">
-      <default>['&lt;Super&gt;c']</default>
-      <summary>Push to stack hotkey</summary>
+    <!-- User-defined shortcuts: JSON array of
+         { "id", "label", "accel", "mode", "prompt" }.
+         Empty by default: on first enable it is migrated from `presets` (or
+         from the built-in two-shortcut default). -->
+    <key name="shortcuts" type="s">
+      <default>''</default>
+      <summary>User-defined shortcuts and their prompts (JSON array)</summary>
     </key>
-    <key name="hotkey-choose" type="as">
-      <default>['&lt;Super&gt;x']</default>
-      <summary>Choose from stack hotkey</summary>
+
+    <!-- Internal keybinding slots. The extension mirrors `shortcuts` into
+         these keys because Main.wm.addKeybinding() requires a schema key. -->
+    <key name="hotkey-slot-0" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 0</summary>
     </key>
-    <key name="hotkey-loop" type="as">
-      <default>['&lt;Super&gt;v']</default>
-      <summary>Loop operation hotkey</summary>
+    <key name="hotkey-slot-1" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 1</summary>
     </key>
+    <key name="hotkey-slot-2" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 2</summary>
+    </key>
+    <key name="hotkey-slot-3" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 3</summary>
+    </key>
+    <key name="hotkey-slot-4" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 4</summary>
+    </key>
+    <key name="hotkey-slot-5" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 5</summary>
+    </key>
+    <key name="hotkey-slot-6" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 6</summary>
+    </key>
+    <key name="hotkey-slot-7" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 7</summary>
+    </key>
+    <key name="hotkey-slot-8" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 8</summary>
+    </key>
+    <key name="hotkey-slot-9" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 9</summary>
+    </key>
+    <key name="hotkey-slot-10" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 10</summary>
+    </key>
+    <key name="hotkey-slot-11" type="as">
+      <default>[]</default>
+      <summary>Shortcut slot 11</summary>
+    </key>
+
     <key name="api-endpoint" type="s">
       <default>'http://localhost:8010/v1/chat/completions'</default>
       <summary>API endpoint</summary>
@@ -25,9 +73,14 @@
       <default>'random'</default>
       <summary>API key</summary>
     </key>
+    <key name="request-timeout" type="i">
+      <default>90</default>
+      <summary>HTTP timeout in seconds</summary>
+    </key>
+    <!-- Legacy v1 prompt library. Read once to migrate into `shortcuts`. -->
     <key name="presets" type="s">
       <default><![CDATA['{"fix-pt":"Corrija o português, mantendo o sentido e o tom.","summarize":"Resuma em no máximo 2 linhas, em português.","explain-code":"Explique este código de forma concisa, em português.","translate-en":"Traduza para inglês natural, mantendo termos técnicos quando necessário."}']]></default>
-      <summary>Preset prompts</summary>
+      <summary>Legacy preset prompts (migrated into shortcuts)</summary>
     </key>
     <key name="stream" type="b">
       <default>false</default>

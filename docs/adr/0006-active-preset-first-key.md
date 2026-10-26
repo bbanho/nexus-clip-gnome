@@ -1,7 +1,7 @@
 # ADR-0006: Active preset = first key of the presets object
 
 ## Status
-Accepted
+Superseded by [ADR-0008](0008-configurable-shortcuts-and-clipboard-boundary.md).
 
 ## Context
 `presets` is a JSON object (`name → prompt text`) rendered as the chooser list. S1 (and the

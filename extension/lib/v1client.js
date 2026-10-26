@@ -1,134 +1,210 @@
-import { buildPayload, parseCompletion } from './v1core.js';
-import { createSseParser, createUtf8Decoder } from './sse.js';
-import Soup from 'gi://Soup';
+import Soup from 'gi://Soup?version=3.0';
 import GLib from 'gi://GLib';
 
-function _bodyBytes(payload) {
+import { buildPayload, parseCompletion } from './v1core.js';
+import { createSseParser, createUtf8Decoder } from './sse.js';
+
+function bodyBytes(payload) {
     return new GLib.Bytes(new TextEncoder().encode(JSON.stringify(payload)));
+}
+
+function createSession(timeoutSeconds) {
+    const session = new Soup.Session();
+    if (timeoutSeconds > 0)
+        session.timeout = timeoutSeconds;
+    return session;
+}
+
+function statusText(message) {
+    return `HTTP ${message.get_status()} ${message.get_reason_phrase() ?? ''}`.trim();
+}
+
+function errorPreview(text) {
+    const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+    return flat.length > 240 ? flat.slice(0, 240) + '…' : flat;
 }
 
 /**
  * Non-streaming chat completion.
  *
- * NOTE: GJS does NOT promisify Soup.Session.send_and_read_async (it requires
- * the callback argument explicitly), so we pass it and bridge to a Promise.
+ * GJS does not promisify `Soup.Session.send_and_read_async`, so the callback is
+ * passed explicitly and bridged to a Promise. `sender.read()` in GJS may not
+ * implement `Gio.Cancellable`, hence the null fallback.
  */
-export async function chat({ endpoint, model, apiKey, messages }) {
-    const session = new Soup.Session();
+export async function chat({
+    endpoint,
+    model,
+    apiKey,
+    messages,
+    cancellable = null,
+    timeoutSeconds = 0,
+}) {
+    const session = createSession(timeoutSeconds);
     const message = Soup.Message.new('POST', endpoint);
     message.request_headers.append('Content-Type', 'application/json');
     message.request_headers.append('Authorization', 'Bearer ' + apiKey);
     const payload = buildPayload({ model, messages, stream: false });
-    message.set_request_body_from_bytes('application/json', _bodyBytes(payload));
+    message.set_request_body_from_bytes('application/json', bodyBytes(payload));
 
     const bytes = await new Promise((resolve, reject) => {
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
-            try {
-                resolve(sess.send_and_read_finish(res));
-            } catch (e) {
-                reject(e);
+        session.send_and_read_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            (sender, result) => {
+                try {
+                    resolve(sender.send_and_read_finish(result));
+                } catch (error) {
+                    reject(error);
+                }
             }
-        });
+        );
     });
 
+    const text = new TextDecoder().decode(bytes.get_data());
     if (message.get_status() !== 200) {
-        throw new Error('HTTP ' + message.get_status() + ' ' + message.get_reason_phrase());
+        const detail = errorPreview(text);
+        throw new Error(`${statusText(message)}${detail ? ` — ${detail}` : ''}`);
     }
-    return parseCompletion(new TextDecoder().decode(bytes.get_data()));
+    return parseCompletion(text);
 }
 
 /**
  * Streaming (SSE) chat completion.
  *
- * libsoup3: `send_finish()` returns the response as a `Gio.InputStream`, which
- * we read incrementally (chunk by chunk) and feed to the SSE parser.
- * (Soup.Session.read_bytes_async / Soup.Message.get_response_body do NOT exist.)
+ * libsoup3: `send_finish()` returns a `Gio.InputStream` read incrementally.
+ * The gateway keeps the socket open after `data: [DONE]`, so `[DONE]` (not
+ * EOF) is the terminator — see ADR-0003.
  *
- * IMPORTANT: the gateway keeps the socket open after `data: [DONE]`, so EOF is
- * NOT a reliable terminator. We settle on the SSE `[DONE]` marker (and also on
- * EOF, defensively) and close the stream.
+ * Resolves with the accumulated text; rejects on HTTP/cancellation errors.
  */
-export async function stream({ endpoint, model, apiKey, messages, onDelta, onFinish, onError }) {
-    const session = new Soup.Session();
+export async function stream({
+    endpoint,
+    model,
+    apiKey,
+    messages,
+    onDelta,
+    onFinish,
+    onError,
+    cancellable = null,
+    timeoutSeconds = 0,
+}) {
+    const session = createSession(timeoutSeconds);
     const message = Soup.Message.new('POST', endpoint);
     message.request_headers.append('Content-Type', 'application/json');
     message.request_headers.append('Authorization', 'Bearer ' + apiKey);
     message.request_headers.append('Accept', 'text/event-stream');
     const payload = buildPayload({ model, messages, stream: true });
-    message.set_request_body_from_bytes('application/json', _bodyBytes(payload));
+    message.set_request_body_from_bytes('application/json', bodyBytes(payload));
 
-    let finished = false;
-    const finishOnce = () => {
-        if (finished) return;
-        finished = true;
-        if (typeof onFinish === 'function') onFinish();
-    };
-
-    await new Promise((resolve) => {
+    return await new Promise((resolve, reject) => {
         let settled = false;
+        let finished = false;
         let input = null;
-        let parser = null;
+        let accumulated = '';
 
-        const settle = () => {
-            if (settled) return;
-            settled = true;
-            if (input) {
-                try { input.close(null); } catch (_e) { /* ignore */ }
-            }
-            resolve();
+        const finishOnce = () => {
+            if (finished)
+                return;
+            finished = true;
+            if (typeof onFinish === 'function')
+                onFinish();
         };
 
-        parser = createSseParser({
-            onDelta: (d) => { if (typeof onDelta === 'function') onDelta(d); },
+        const settleOk = () => {
+            if (settled)
+                return;
+            settled = true;
+            finishOnce();
+            if (input) {
+                try {
+                    input.close(null);
+                } catch (_e) {
+                    // already closed
+                }
+            }
+            resolve(accumulated);
+        };
+
+        const settleError = error => {
+            if (settled)
+                return;
+            settled = true;
+            if (typeof onError === 'function')
+                onError(error);
+            if (input) {
+                try {
+                    input.close(null);
+                } catch (_e) {
+                    // already closed
+                }
+            }
+            reject(error);
+        };
+
+        const parser = createSseParser({
+            onDelta: delta => {
+                accumulated += delta;
+                if (typeof onDelta === 'function')
+                    onDelta(delta);
+            },
             // `[DONE]` is terminal: settle immediately instead of waiting for EOF.
-            onDone: () => { finishOnce(); settle(); },
+            onDone: () => settleOk(),
         });
 
-        session.send_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
-            try {
-                input = sess.send_finish(res);
-            } catch (e) {
-                if (typeof onError === 'function') onError(e);
-                settle();
-                return;
-            }
+        session.send_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            (sender, result) => {
+                try {
+                    input = sender.send_finish(result);
+                } catch (error) {
+                    settleError(error);
+                    return;
+                }
 
-            if (message.get_status() !== 200) {
-                if (typeof onError === 'function')
-                    onError(new Error('HTTP ' + message.get_status()));
-                settle();
-                return;
-            }
+                if (message.get_status() !== 200) {
+                    settleError(new Error(statusText(message)));
+                    return;
+                }
 
-            const decoder = createUtf8Decoder();
+                const decoder = createUtf8Decoder();
 
-            const readNext = () => {
-                if (settled) return;
-                input.read_bytes_async(8192, GLib.PRIORITY_DEFAULT, null, (s, readRes) => {
-                    let bytes;
-                    try {
-                        bytes = s.read_bytes_finish(readRes);
-                    } catch (e) {
-                        if (!settled && typeof onError === 'function') onError(e);
-                        settle();
+                const readNext = () => {
+                    if (settled)
                         return;
-                    }
+                    input.read_bytes_async(
+                        8192,
+                        GLib.PRIORITY_DEFAULT,
+                        cancellable,
+                        (stream, readResult) => {
+                            let bytes;
+                            try {
+                                bytes = stream.read_bytes_finish(readResult);
+                            } catch (error) {
+                                settleError(error);
+                                return;
+                            }
 
-                    const data = bytes.get_data();
-                    if (!data || data.length === 0) {
-                        const tail = decoder.flush();
-                        if (tail) parser.push(tail);
-                        finishOnce();
-                        settle();
-                        return;
-                    }
+                            const data = bytes.get_data();
+                            if (!data || data.length === 0) {
+                                const tail = decoder.flush();
+                                if (tail)
+                                    parser.push(tail);
+                                settleOk();
+                                return;
+                            }
 
-                    parser.push(decoder.push(data));
-                    if (!settled) readNext();
-                });
-            };
+                            parser.push(decoder.push(data));
+                            if (!settled)
+                                readNext();
+                        }
+                    );
+                };
 
-            readNext();
-        });
+                readNext();
+            }
+        );
     });
 }

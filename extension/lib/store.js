@@ -1,155 +1,80 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+// GJS/Gio persistence adapter used by the shell extension and by prefs.
+// Pure state semantics live in `store-core.js`; serialization lives in
+// `store-io.js`.
 
-export function dataDir(dir) {
-  if (dir) return dir;
-  const envDir = process.env.NEXUS_CLIP_DATA_DIR;
-  if (envDir) return envDir;
-  return path.join(os.homedir(), '.local/share/nexus-clip-gnome');
+import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
+
+import { createStoreIo } from './store-io.js';
+
+function pathJoin(...parts) {
+    return GLib.build_filenamev(parts);
 }
 
-function ensureDirSync(targetDir) {
-  fs.mkdirSync(targetDir, { recursive: true });
+function mkdirp(dir) {
+    GLib.mkdir_with_parents(dir, 0o755);
 }
 
-function cloneState(state) {
-  return {
-    schemaVersion: state.schemaVersion ?? 1,
-    items: Array.isArray(state.items) ? [...state.items] : [],
-    ...(state.maxItems ? { maxItems: state.maxItems } : {}),
-    ...(state.dedupe !== undefined ? { dedupe: state.dedupe } : {}),
-  };
+function readText(filePath) {
+    const [ok, bytes] = GLib.file_get_contents(filePath);
+    if (!ok)
+        throw new Error(`Cannot read: ${filePath}`);
+    return new TextDecoder().decode(bytes);
 }
 
-function makeId() {
-  return `item_${Date.now()}_${Math.floor(Math.random() * 1000000000)}`;
+function writeText(filePath, data) {
+    if (!GLib.file_set_contents(filePath, data))
+        throw new Error(`Cannot write: ${filePath}`);
 }
 
-export function loadStack(dir) {
-  const filePath = path.join(dataDir(dir), 'stack.json');
-  try {
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const data = JSON.parse(raw);
-    if (!data || data.schemaVersion !== 1 || !Array.isArray(data.items)) {
-      return { schemaVersion: 1, items: [] };
-    }
-    return cloneState(data);
-  } catch (_e) {
-    return { schemaVersion: 1, items: [] };
-  }
+function appendText(filePath, data) {
+    const file = Gio.File.new_for_path(filePath);
+    const stream = file.append_to(Gio.FileCreateFlags.NONE, null);
+    const bytes = new TextEncoder().encode(data);
+    stream.write_all(bytes, null);
+    stream.close(null);
 }
 
-export function saveStack(dir, state) {
-  const baseDir = dataDir(dir);
-  ensureDirSync(baseDir);
-  const filePath = path.join(baseDir, 'stack.json');
-  const toWrite = {
-    schemaVersion: 1,
-    items: Array.isArray(state.items) ? state.items : [],
-    ...(state.maxItems ? { maxItems: state.maxItems } : {}),
-    ...(state.dedupe !== undefined ? { dedupe: state.dedupe } : {}),
-  };
-  fs.writeFileSync(filePath, JSON.stringify(toWrite, null, 2), 'utf8');
-  return cloneState(toWrite);
+function resolveDataDir(dir) {
+    if (dir)
+        return dir;
+    const envDir = GLib.getenv('NEXUS_CLIP_DATA_DIR');
+    if (envDir)
+        return envDir;
+    return pathJoin(GLib.get_home_dir(), '.local', 'share', 'nexus-clip-gnome');
 }
 
-export function loadFifo(dir) {
-  const filePath = path.join(dataDir(dir), 'fifo.json');
-  try {
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const data = JSON.parse(raw);
-    if (!data || data.schemaVersion !== 1 || !Array.isArray(data.items)) {
-      return { schemaVersion: 1, items: [] };
-    }
-    return cloneState(data);
-  } catch (_e) {
-    return { schemaVersion: 1, items: [] };
-  }
-}
+const io = createStoreIo({
+    dataDir: resolveDataDir,
+    join: pathJoin,
+    readText,
+    writeText,
+    appendText,
+    mkdirp,
+});
 
-export function saveFifo(dir, state) {
-  const baseDir = dataDir(dir);
-  ensureDirSync(baseDir);
-  const filePath = path.join(baseDir, 'fifo.json');
-  const toWrite = {
-    schemaVersion: 1,
-    items: Array.isArray(state.items) ? state.items : [],
-    ...(state.maxItems ? { maxItems: state.maxItems } : {}),
-    ...(state.dedupe !== undefined ? { dedupe: state.dedupe } : {}),
-  };
-  fs.writeFileSync(filePath, JSON.stringify(toWrite, null, 2), 'utf8');
-  return cloneState(toWrite);
-}
+export const dataDir = dir => resolveDataDir(dir);
+export const loadStack = dir => io.loadStack(dir);
+export const saveStack = (dir, state) => io.saveStack(dir, state);
+export const loadFifo = dir => io.loadFifo(dir);
+export const saveFifo = (dir, state) => io.saveFifo(dir, state);
+export const appendHistory = (dir, node) => io.appendHistory(dir, node);
+export const clearHistory = dir => io.clearHistory(dir);
 
-export function push(state, text, parentId = null) {
-  const next = cloneState(state);
-  const trimmed = String(text ?? '').trim();
-  if (!trimmed) return next;
-
-  const dedupe = next.dedupe !== false;
-  if (dedupe && next.items.length > 0) {
-    const top = next.items[0];
-    if (top && top.text === trimmed) {
-      return next;
-    }
-  }
-
-  const node = {
-    id: makeId(),
-    parentId: parentId || null,
-    text: trimmed,
-    ts: Date.now(),
-  };
-  next.items.unshift(node);
-  const maxItems = next.maxItems ?? 200;
-  if (next.items.length > maxItems) {
-    next.items.length = maxItems;
-  }
-  return next;
-}
-
-export function pop(state) {
-  const next = cloneState(state);
-  if (next.items.length === 0) return { state: next, item: null };
-  const item = next.items.shift();
-  return { state: next, item };
-}
-
-export function peek(state) {
-  if (!state || !Array.isArray(state.items) || state.items.length === 0) return null;
-  return state.items[0];
-}
-
-export function enqueue(state, prompt) {
-  const next = cloneState(state);
-  const p = String(prompt ?? '').trim();
-  const node = {
-    id: makeId(),
-    prompt: p,
-    ts: Date.now(),
-  };
-  next.items.push(node);
-  return next;
-}
-
-export function dequeue(state) {
-  const next = cloneState(state);
-  if (next.items.length === 0) return { state: next, item: null };
-  const item = next.items.shift();
-  return { state: next, item };
-}
-
-export function peekFifo(state) {
-  if (!state || !Array.isArray(state.items) || state.items.length === 0) return null;
-  return state.items[0];
-}
-
-export function appendHistory(dir, node) {
-  const baseDir = dataDir(dir);
-  ensureDirSync(baseDir);
-  const filePath = path.join(baseDir, 'history.jsonl');
-  const line = JSON.stringify(node) + '\n';
-  fs.appendFileSync(filePath, line, 'utf8');
-  return true;
-}
+export {
+    DEFAULT_MAX_ITEMS,
+    SCHEMA_VERSION,
+    cloneState,
+    dequeue,
+    emptyState,
+    enqueue,
+    makeId,
+    normalizeLoaded,
+    peek,
+    peekFifo,
+    pop,
+    push,
+    pushNode,
+    pushResult,
+    serializeState,
+} from './store-core.js';

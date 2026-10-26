@@ -1,120 +1,141 @@
-# Nexus Clip GNOME Shell Extension
+# Nexus Clip for GNOME
 
-Clipboard-driven LLM pipeline: a **LIFO stack** of copied inputs, a **FIFO** of chosen
-prompts, and inference via an OpenAI-compatible `/v1` endpoint. It reads and writes the
-clipboard **only** when you press one of its shortcuts.
+[![CI](https://github.com/bbanho/nexus-clip-gnome/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/bbanho/nexus-clip-gnome/actions/workflows/ci.yml)
 
-> POC (proof of concept). The `/v1` HTTP contract is the intended integration seam for a
-> later C + llama.cpp implementation; only OpenAI-compatible `/v1/chat/completions` is
-> supported.
+Nexus Clip is a GNOME Shell extension that gives text workflows their **own clipboard**:
+a persistent LIFO stack for source text and model results, plus a FIFO queue for prompts.
+It connects to an OpenAI-compatible chat-completions endpoint.
+
+> **Clipboard safety:** the Nexus stack is separate from the desktop clipboard. Nexus
+> reads the desktop clipboard only when you explicitly import text, and writes to it
+> only when you explicitly export an item. Inference never replaces your clipboard.
+
+> **Project status:** proof of concept. See [scope and limitations](#status-and-limitations)
+> before relying on it for critical work.
+
+## At a glance
+
+- **Import + process** selected/copied text with a shortcut and save both input and result
+  in Nexus.
+- **Process the Nexus top** repeatedly to create a traceable chain of results.
+- **Queue prompts** and run one at a time or drain the queue; failed work stays retryable.
+- **Choose your shortcuts and prompts** in Preferences, with up to 12 shortcut entries.
+- **Use streaming** to watch a response arrive in a non-focusable shell panel.
+- **Inspect and export** items through the stack viewer.
 
 ## Requirements
 
-- GNOME Shell 45-50 (developed/validated on **50.3 Wayland**).
-- A reachable OpenAI-compatible endpoint. Defaults to the local Nexus Gateway:
-  `http://localhost:8010/v1/chat/completions`.
+- GNOME Shell 45–50 (developed and validated on GNOME Shell 50.3 / Wayland).
+- GJS, `glib-compile-schemas`, and GNOME Shell extension tools.
+- An accessible OpenAI-compatible `/v1/chat/completions` endpoint. The default endpoint
+  and model can be changed in Preferences; see [Configuration](docs/CONFIGURATION.md).
 
-## Install
+## Install from a clone
 
 ```bash
-cd /var/home/bruno/repos/nexus-clip-gnome
-make install          # compiles schemas + copies metadata.json, extension.js, prefs.js, lib/, schemas/
+git clone https://github.com/bbanho/nexus-clip-gnome.git
+cd nexus-clip-gnome
+make install
+```
+
+On Wayland, log out and back in so GNOME Shell discovers a newly installed extension.
+Then enable it and open Preferences:
+
+```bash
 make enable
-```
-
-On **Wayland** a freshly installed extension is not visible to the running shell until it
-is reloaded. Either log out and back in, or on X11 press `Alt+F2` → `r` → Enter. After the
-reload, verify with:
-
-```bash
-gnome-extensions info nexus-clip@bbanho   # State: ENABLED
-```
-
-## Configure
-
-```bash
 gnome-extensions prefs nexus-clip@bbanho
 ```
 
-Groups: **API** (`api-endpoint`, `model-name`, `api-key`, `stream`) and **Presets**
-(a JSON object), plus **Atalhos** (three accelerator entries).
-
-- `presets` is a JSON **object** mapping `name -> prompt text`, e.g.
-  ```json
-  {
-    "fix-pt": "Corrija o português, mantendo o sentido e o tom.",
-    "summarize": "Resuma em no máximo 2 linhas, em português.",
-    "explain-code": "Explique este código de forma concisa, em português.",
-    "translate-en": "Traduza para inglês natural, mantendo termos técnicos quando necessário."
-  }
-  ```
-- **The "active preset" used by S1/S2 is the FIRST key of that object.** Reorder the JSON
-  to change which prompt is active.
-- `stream` (default `false`) turns on SSE streaming; in S2 the response then appears
-  live in the selector window.
-- `api-key` lives in GSettings/dconf only — never in the repo.
-
-## Shortcuts
-
-| Key | Action | Semantics |
-|-----|--------|-----------|
-| `<Super>c` | **S1 push+process** | Reads the clipboard → pushes it onto the LIFO stack → runs inference with the active preset → writes the result to the clipboard and appends a history node. |
-| `<Super>x` | **S2 choose** | Takes the current item (top of the stack), runs inference (live in a GTK window when `stream=true`), writes the result to the clipboard, and opens a GTK window listing the presets. The prompt you pick is enqueued onto the FIFO. |
-| `<Super>v` | **S3 loop** | Pops **one** prompt off the FIFO, applies it to the current item, writes the result to the clipboard (so you can paste in between) and reports the next prompt. When the FIFO empties it reports the final result. Press it again for each step. |
-
-All three are remappable in prefs (avoid `<Ctrl><Super>o` / `<Ctrl><Super>p`, used by the
-`llm-text-modifier` extension).
-
-## State (on disk)
-
-```
-~/.local/share/nexus-clip-gnome/stack.json      # LIFO of inputs: { schemaVersion, items:[{id,parentId,text,ts}] }
-~/.local/share/nexus-clip-gnome/fifo.json       # FIFO of chosen prompts: { schemaVersion, items:[{id,prompt,ts}] }
-~/.local/share/nexus-clip-gnome/history.jsonl   # append-only inference history (prepares the future tree)
-```
-
-Override the directory with `NEXUS_CLIP_DATA_DIR` (used by the tests). The node shape
-already carries `id`/`parentId` so a branching tree can be layered on later without a
-schema break.
-
-## Tests
-
-Pure logic (state store, SSE parser, `/v1` payload/parse) runs outside the shell:
+Check installation status with:
 
 ```bash
-node --test        # 25 tests
+gnome-extensions info nexus-clip@bbanho
 ```
 
-UI/wiring (keybindings, `St.Clipboard`, GTK windows) is validated manually in the shell —
-see `EVIDENCE.md`.
+See [Development](docs/DEVELOPMENT.md) for packaging, reinstalling, and reload details.
+
+## First use
+
+1. Open **Preferences → API** and set the endpoint, model, and API key required by your
+   provider. The key is stored in GNOME Settings (dconf), not in this repository.
+2. Copy some plain text in another application.
+3. Press **`Alt` + `Super` + `V`** to import that text into Nexus and process it with the
+   shortcut's prompt.
+4. Press **`Alt` + `Super` + `C`** to process the current Nexus top again.
+5. To paste a result into another application, explicitly export it with **Copiar topo do
+   Nexus para o sistema**, or open **Mostrar pilha e fila**, select an item, and press
+   **Enter**.
+
+The defaults are:
+
+| Shortcut | Action | Clipboard behavior |
+|---|---|---|
+| `Alt` + `Super` + `V` | **Importar e processar** | Reads desktop clipboard; stores source and result in Nexus; does not write back. |
+| `Alt` + `Super` + `C` | **Processar pilha** | Sends the Nexus top for inference and stores the result in Nexus. |
+| Unbound template | **Copiar topo do Nexus para o sistema** | Explicitly exports the Nexus top to the desktop clipboard. |
+
+See the [User Guide](docs/USER_GUIDE.md) for all actions, queue behavior, and shortcuts.
+
+## How the Nexus clipboard works
+
+- `stack.json` is the Nexus clipboard. The newest item is the top (**LIFO**).
+- Successful inferences create new result nodes linked to their source with `parentId`;
+  processing a result again extends the chain.
+- `fifo.json` stores prompts (**FIFO**). `Rodar próximo da fila` runs one prompt;
+  `Rodar fila inteira` processes in order and saves each successful step.
+- **Desfazer** removes the newest Nexus item. It does not change the desktop clipboard.
+- The HUD viewer is built with GNOME Shell St/Clutter widgets. GTK is used only in the
+  separate Preferences process, avoiding the old shell-freeze failure mode.
+
+## Development and tests
+
+```bash
+make check   # schema validation, Node tests, syntax checks, GJS store smoke test
+make smoke   # live HTTP client smoke test; needs a reachable endpoint
+```
+
+Enable local commit and push gates once per clone:
+
+```bash
+make hooks   # pre-commit and pre-push run make check
+```
+
+GitHub Actions also runs `make check` on pull requests. The test suite covers the critical
+clipboard, shell-process, shortcut, schema, and state invariants; see
+[Critical Points](docs/CRITICAL_POINTS.md). For the code map and data flows, see
+[Architecture](docs/ARCHITECTURE.md).
 
 ## Documentation
 
-| Doc | Contents |
-|-----|----------|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module map, lifecycle, S1/S2/S3 flow diagrams, state model, HTTP contract, settings. |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Pure/impure split, build/install/reload, tests, live smoke test, debugging. |
-| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Failure modes: enable after install, hotkey conflicts, gateway/model errors, hangs. |
-| [`docs/adr/`](docs/adr/README.md) | Decision log (ADR-0001..0007). |
-| [`CHANGELOG.md`](CHANGELOG.md) | Version history (Keep a Changelog). |
-| [`EVIDENCE.md`](EVIDENCE.md) | E2E validation runbook + recorded evidence. |
-| [`llms.txt`](llms.txt) | Compact index for AI agents. |
+| Guide | What it covers |
+|---|---|
+| [User Guide](docs/USER_GUIDE.md) | Actions, importing/exporting, prompt queue, HUD, and day-to-day use. |
+| [Configuration](docs/CONFIGURATION.md) | API settings, shortcuts, GSettings keys, data files, and migration. |
+| [Development](docs/DEVELOPMENT.md) | Build, tests, hooks, CI, install, and debugging. |
+| [Architecture](docs/ARCHITECTURE.md) | Modules, lifecycle, data flows, state model, and HTTP contract. |
+| [Critical Points](docs/CRITICAL_POINTS.md) | Invariants mapped to automated and manual tests. |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common install, keybinding, clipboard, gateway, and shell issues. |
+| [ADRs](docs/adr/README.md) | Accepted and superseded architecture decisions. |
+| [E2E Evidence](EVIDENCE.md) | Manual end-to-end validation runbook. |
+| [Changelog](CHANGELOG.md) | Release history. |
 
-## Known limitations / notes (POC)
+## Status and limitations
 
-- **Wayland**: `St.Clipboard` only sees clipboard text the shell owns; a shell reload
-  (logout/login) is required after install.
-- **Active preset = first key** of the `presets` object (see above).
-- **S3 is stepwise by design** — one prompt per keypress, to allow manual intermediate
-  paste. It never drains the FIFO in a single activation.
-- **Gateway note**: the Nexus Gateway keeps the HTTP socket open after sending
-  `data: [DONE]`; the client therefore treats `[DONE]` as terminal instead of waiting for
-  EOF.
-- Non-Goals for the POC: no tree/branching yet, no C++/llama.cpp, no providers other than
-  OpenAI-compatible `/v1/chat/completions`, no embeddings/vector store.
+- Supports OpenAI-compatible chat completions only; no embeddings, vector store, or
+  branching history UI.
+- Data is local, but prompts and imported text are sent to the configured inference
+  endpoint when an inference action runs. Review your provider's data handling policy.
+- Clipboard import depends on GNOME Shell's Wayland clipboard access at activation time;
+  copy text immediately before invoking the import shortcut.
+- The extension has not been presented as a GNOME Extensions publication/release. Install
+  from source and validate in your own GNOME environment.
 
 ## Uninstall
 
 ```bash
 make uninstall
 ```
+
+Uninstalling the extension does not remove its data under
+`~/.local/share/nexus-clip-gnome/` or its GSettings values. Back up or remove those
+separately if desired.
