@@ -1,7 +1,7 @@
 {
   "uuid": "nexus-clip@bbanho",
   "name": "Nexus Clip",
-  "description": "Clipboard-driven LLM pipeline: stack + FIFO, inference via an OpenAI-compatible /v1 endpoint. Reads and writes the clipboard only when you press its shortcuts.",
+  "description": "Nexus with its own clipboard: a LIFO stack of inputs/results, user-defined shortcuts with per-shortcut prompts, explicit import/export to the system clipboard, and inference via an OpenAI-compatible /v1 endpoint.",
   "shell-version": [
     "45",
     "46",
@@ -11,6 +11,6 @@
     "50"
   ],
   "settings-schema": "org.gnome.shell.extensions.nexus-clip",
-  "version": 1,
+  "version": 2,
   "author": "bbanho"
 }

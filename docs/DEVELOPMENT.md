@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- GNOME Shell 45–50 (`gnome-extensions 50.3` present on the dev box).
+- GNOME Shell 45–50 (`gnome-extensions` 50.x on the dev box).
 - GJS + libsoup3, `glib-compile-schemas`.
 - Node.js **only for the pure-logic tests** (`node --test`) — the extension itself never
   runs under Node.
@@ -11,29 +11,68 @@
 
 All *logic* is pure and runs under `node --test`. GJS/UI modules stay thin.
 
-| Pure (Node-testable) | GJS/UI (manual) |
-|----------------------|-----------------|
-| `lib/v1core.js`, `lib/sse.js`, `lib/store.js` | `lib/v1client.js`, `lib/selector.js`, `lib/actions.js`, `extension.js`, `prefs.js` |
+| Pure (Node-testable) | GJS/UI (smoke/manual) |
+|----------------------|------------------------|
+| `lib/shortcuts.js`, `lib/config.js` | `lib/v1client.js`, `lib/hud.js`, `lib/actions.js` |
+| `lib/store-core.js`, `lib/store-io.js`, `tests/helpers/store-node.js` | `lib/store.js`, `extension.js`, `prefs.js` |
+| `lib/v1core.js`, `lib/sse.js` | |
 
 Keep new logic in the pure column when possible; it is the cheapest thing to verify.
 
 ## Test
 
 ```bash
-node --test            # 25 tests: store, v1core, sse
+make check
 ```
 
-Syntax check every file before committing:
+`make check` runs:
+
+1. `glib-compile-schemas --strict extension/schemas`
+2. `node --test` — shortcut model, config migration, LIFO/FIFO, SSE, `/v1` helpers,
+   malformed-state recovery, shell/clipboard boundary invariants, and the schema contract
+3. `node --check` on `extension.js`, `prefs.js`, and every `lib/*.js`
+4. `gjs -m tests/gjs-store-smoke.mjs` — the real Gio persistence adapter
+
+The live network smoke test is separate:
 
 ```bash
-for f in extension/extension.js extension/lib/*.js; do node --check "$f"; done
+make smoke   # requires the gateway on :8010
 ```
+
+It exercises both `chat()` and `stream()` and exits non-zero on failure.
+
+## Hooks & CI (required before merge)
+
+Enable the local gate once per clone:
+
+```bash
+make hooks   # chmod +x .githooks/*; git config core.hooksPath .githooks
+```
+
+`.githooks/pre-commit` and `.githooks/pre-push` both run `make check`. Do not bypass
+them with `--no-verify`; if a test is wrong, fix the test in the same PR.
+
+Every pull request also runs `make check` in GitHub Actions
+(`.github/workflows/ci.yml`). The `check` job must be green before merge. If you have
+admin access, mark it as a required status check in the branch protection rules for
+`master`. `make smoke` is not in CI because it needs the local Nexus Gateway.
+
+The invariants behind these gates are listed in
+[`CRITICAL_POINTS.md`](CRITICAL_POINTS.md), including which ones are covered by unit tests
+and which require the manual/E2E runbook.
+
+### Why static imports in GJS smoke scripts
+
+A top-level `await import(...)` in a `gjs -m` script breaks GJS promise-job draining
+while a `GLib.MainLoop` runs (ADR-0002). The smoke scripts therefore use static imports.
 
 ## Build / install / enable
 
 ```bash
 make compile-schemas   # glib-compile-schemas extension/schemas
+make hooks             # enable .githooks (pre-commit/pre-push -> make check)
 make install           # schemas + metadata.json, extension.js, prefs.js, lib/, schemas/
+make pack              # dist/nexus-clip@bbanho.shell-extension.zip (includes lib/)
 make enable            # gnome-extensions enable nexus-clip@bbanho
 make disable
 make uninstall
@@ -43,35 +82,44 @@ make uninstall
 > by **logging out and back in** before `make enable` (X11: `Alt+F2` → `r`). This is why
 > `make enable` can print `A extensão ... não existe` straight after install.
 
-## Live smoke test (against the gateway)
+> **Never create GTK widgets in the shell process.** That was the cause of the old
+> Super+X freeze (ADR-0009). In-shell UI belongs in `hud.js` and must use St/Clutter.
+> Prefs are the exception: they run in a separate process.
 
-The pure tests do not touch the network. To exercise the real client, use a **static
-import** in a `gjs -m` script (a top-level `await import(...)` breaks GJS promise draining
-while a `GLib.MainLoop` runs — see `docs/adr/0002`):
+## Adding or editing a shortcut
 
-```js
-// /tmp/smoke.mjs   ->  gjs -m /tmp/smoke.mjs
-import GLib from 'gi://GLib';
-import { chat, stream } from 'file:///var/home/bruno/repos/nexus-clip-gnome/extension/lib/v1client.js';
+1. Open prefs:
+   ```bash
+   gnome-extensions prefs nexus-clip@bbanho
+   ```
+2. Expand a shortcut (or click **Adicionar**).
+3. Click **Definir…**, press the combination. `Esc` cancels; `Backspace` clears it.
+   At least one of `Super`, `Alt`, `Ctrl`, `Hyper` is required.
+4. Choose the **Ação**, edit the **Prompt** (for prompt-based actions), and give it a name.
 
-const ep = 'http://localhost:8010/v1/chat/completions';
-const messages = [{ role: 'user', content: 'diga apenas: ok' }];
-const loop = GLib.MainLoop.new(null, false);
-GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 45, () => { loop.quit(); return false; });
+Under the hood the list is a JSON array in the `shortcuts` key:
 
-chat({ endpoint: ep, model: 'gemini-2.5-flash', apiKey: 'random', messages })
-  .then(r => console.log('chat =>', JSON.stringify(r)));
-
-let acc = '';
-stream({ endpoint: ep, model: 'gemini-2.5-flash', apiKey: 'random', messages,
-  onDelta: d => { acc += d; }, onFinish: () => console.log('onFinish acc=', JSON.stringify(acc)) })
-  .then(() => loop.quit());
-
-loop.run();
+```json
+[
+  {
+    "id": "sc_default_push_process",
+    "label": "Importar e processar",
+    "accel": "<Alt><Super>v",
+    "mode": "push-process",
+    "prompt": "Corrija o português, mantendo o sentido e o tom."
+  }
+]
 ```
 
-Expected: `chat => "ok"` and `onFinish acc= "ok"`. Gateways are slow sometimes (2–27s) —
-prefer a generous timeout.
+The extension mirrors registered bindings into `hotkey-slot-0..11`; do not edit those
+directly. Changing a prompt/label does not re-grab keys. Changing an accelerator does.
+
+To script a change:
+
+```bash
+gsettings --schemadir extension/schemas set org.gnome.shell.extensions.nexus-clip \
+  shortcuts '[{"id":"mine","label":"Resumir","accel":"<Alt><Super>r","mode":"push-process","prompt":"Resuma em 2 linhas."}]'
+```
 
 ## Debugging in the shell
 
@@ -87,16 +135,8 @@ cat ~/.local/share/nexus-clip-gnome/{stack,fifo}.json
 tail -n5 ~/.local/share/nexus-clip-gnome/history.jsonl
 ```
 
-## Adding / editing a preset
-
-Presets live in the GSettings key `presets` (a JSON **object**). Edit them in prefs, or:
-
-```bash
-gsettings --schemadir extension/schemas set org.gnome.shell.extensions.nexus-clip \
-  presets '{"my-prompt":"Do something.","summarize":"Resuma."}'
-```
-
-The **first key** is the "active preset" used by S1/S2. Reorder to change it.
+Open the stack viewer by binding an action to the **Mostrar pilha e fila** mode. `Enter`
+copies the selected item to the system clipboard; `Esc` closes.
 
 ## Conventions
 
@@ -104,4 +144,6 @@ The **first key** is the "active preset" used by S1/S2. Reorder to change it.
 - `.gitignore` excludes `extension/schemas/gschemas.compiled`.
 - Never `imports.gi`/`imports.ui` (legacy); use `import X from 'gi://X'` and
   `resource:///org/gnome/...` ESM modules.
+- No GTK in shell-process modules; use St/Clutter.
+- Never write to the system clipboard from an inference path; export is explicit.
 - Commit per logical unit; see `CHANGELOG.md`.

@@ -1,7 +1,7 @@
 # ADR-0004: Shortcut semantics S1 / S2 / S3
 
 ## Status
-Accepted
+Superseded by [ADR-0008](0008-configurable-shortcuts-and-clipboard-boundary.md).
 
 ## Context
 The workflow is clipboard-centric and keyboard-first. The user needs to (S1) transform what

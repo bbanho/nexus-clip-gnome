@@ -1,31 +1,48 @@
 # Nexus Clip
-> GNOME Shell 50 extension: clipboard → LLM inference pipeline over an OpenAI-compatible /v1 endpoint (LIFO stack + FIFO of prompts + GTK prompt chooser).
+> GNOME Shell 45–50 extension: Nexus has its own clipboard (LIFO stack + FIFO of prompts), user-defined shortcuts with per-shortcut prompts, and inference over an OpenAI-compatible /v1 endpoint. The system clipboard is touched only by explicit import/export.
 
 ## Core files
-- extension/extension.js — Extension subclass, keybindings (S1/S2/S3)
-- extension/lib/actions.js — orchestration of S1/S2/S3
-- extension/lib/v1client.js — HTTP client: chat() (non-stream) + stream() (SSE)
+- extension/extension.js — Extension subclass; dynamic keybinding slots from the `shortcuts` list
+- extension/lib/actions.js — orchestration: import/process/export/enqueue/run-next/drain/pop/HUD
+- extension/lib/shortcuts.js — PURE: modes, canonical accelerators, defaults, migration, validation
+- extension/lib/config.js — GSettings glue: load/save shortcuts, signature, API config
+- extension/lib/hud.js — in-shell St/Clutter stack viewer + live streaming panel (no GTK)
+- extension/lib/v1client.js — HTTP client: chat() (non-stream) + stream() (SSE), cancellable/timeout
 - extension/lib/v1core.js — PURE: buildMessages/buildPayload/parseCompletion
 - extension/lib/sse.js — PURE: SSE parser + incremental UTF-8 decoder
-- extension/lib/store.js — PURE: LIFO/FIFO/history persistence (schemaVersion'd)
-- extension/lib/selector.js — GTK preset chooser window (+ live response)
-- extension/prefs.js — preferences (API / Presets / Hotkeys)
+- extension/lib/store-core.js — PURE: LIFO/FIFO semantics, node shape, schemaVersion
+- extension/lib/store-io.js — shared serialization over an injected file adapter
+- extension/lib/store.js — GJS/Gio adapter (shell + prefs)
+- tests/helpers/store-node.js — Node fs adapter (tests)
+- extension/prefs.js — preferences: API / shortcuts (key capture + prompts) / Nexus / help
 - extension/schemas/org.gnome.shell.extensions.nexus-clip.gschema.xml — GSettings schema
 - docs/ARCHITECTURE.md — architecture, flows, state model, HTTP contract
 - docs/DEVELOPMENT.md — build/install/test/smoke workflow
-- docs/TROUBLESHOOTING.md — failure modes
-- docs/adr/ — decision log
-- tests/ — node --test (store, v1core, sse)
+- docs/CRITICAL_POINTS.md — invariants (freeze, clipboard boundary, state) mapped to tests
+- docs/TROUBLESHOOTING.md — failure modes (including the old Super+X freeze)
+- docs/adr/ — decision log (0001..0010)
+- tests/ — node --test (logic + shell/schema contracts) + GJS store/client smoke scripts
+- .githooks/ — pre-commit/pre-push run `make check` (enable with `make hooks`)
+- .github/workflows/ci.yml — `make check` on pull requests and master
+
+## Defaults
+- `<Alt><Super>v` — Importar e processar: system clipboard → Nexus stack → prompt → result node.
+- `<Alt><Super>c` — Processar pilha: prompt applied to the Nexus top → new result node.
+- `copy-top` — export the Nexus top to the system clipboard; unbound by default (capture a key in prefs).
+- HUD `Enter` — explicit export of the selected Nexus item.
 
 ## Key concepts
-- LIFO stack: inputs pushed by S1 (`<Super>c`). Top = newest.
-- FIFO: prompts chosen in S2 (`<Super>x`) via the GTK window; consumed one-per-press by S3 (`<Super>v`).
-- Active preset: the FIRST key of the `presets` JSON object; used by S1/S2.
-- Pure/impure split: logic in pure modules (node --test), GJS/UI thin & validated manually.
+- Nexus clipboard = top of `stack.json`. Inference never writes the system clipboard.
+- Export is explicit: `copy-top` or HUD Enter. Import is explicit: `push-process`.
+- LIFO stack: newest first; results are `kind: "result"` nodes with `parentId` = source.
+- FIFO: prompts enqueued as data; `run-next` consumes one per press, `drain` loops; consume only after success.
+- Shortcuts: JSON array in GSettings `shortcuts` (`{id,label,accel,mode,prompt}`), mirrored into `hotkey-slot-0..11` for `Main.wm.addKeybinding`.
+- Pure/impure split: logic in pure modules (node --test), GJS/UI thin, GJS smoke + manual validation.
 - /v1 contract: POST chat/completions (OpenAI-compatible), SSE streaming with `data: [DONE]` terminator.
 - GJS/libsoup3: no promisify on send_and_read_async; send_finish() returns Gio.InputStream; TextDecoder has no stream option.
 - State: ~/.local/share/nexus-clip-gnome/{stack.json,fifo.json,history.jsonl} (tree-ready via id/parentId).
 
 ## Constraints
 - GNOME Shell 45–50 (ESM; no imports.gi legacy). Wayland reload (logout/login) needed after install.
+- No GTK in the shell process (freeze risk); prefs run in a separate process.
 - No credentials in the repo (api-key via dconf). No providers other than OpenAI-compatible /v1.

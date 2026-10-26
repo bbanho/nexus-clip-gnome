@@ -1,4 +1,5 @@
 extension/schemas/gschemas.compiled
+dist/
 *.zip
 .venv/
 __pycache__/

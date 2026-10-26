@@ -1,261 +1,464 @@
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import { chat, stream } from './v1client.js';
+import { readApiConfig } from './config.js';
+import { createLivePanel, closeAllOverlays, showStackView } from './hud.js';
+import { needsPrompt, parseShortcuts } from './shortcuts.js';
 import { buildMessages } from './v1core.js';
-import { openSelector } from './selector.js';
+import { chat, stream } from './v1client.js';
 import * as store from './store.js';
 
-// PRESETS RULE (explicit assumption):
-// `presets` is a JSON OBJECT mapping name -> prompt text; the "active preset"
-// is the FIRST key. If absent/empty/invalid, presets is {}.
-function parsePresets(settings) {
-    let presets;
-    try {
-        const raw = settings.get_string('presets');
-        presets = JSON.parse(raw);
-    } catch (_e) {
-        return {};
-    }
-    if (!presets || typeof presets !== 'object' || Array.isArray(presets)) {
-        return {};
-    }
-    return presets;
+function preview(text, length = 64) {
+    const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+    return flat.length > length ? flat.slice(0, length - 1) + '…' : flat;
 }
 
-function getActivePreset(settings) {
-    const presets = parsePresets(settings);
-    const keys = Object.keys(presets);
-    if (keys.length === 0) {
-        throw new Error('Nenhum preset configurado');
-    }
-    const name = keys[0];
-    const prompt = presets[name];
-    if (typeof prompt !== 'string') {
-        throw new Error('Nenhum preset configurado');
-    }
-    return { name, prompt };
-}
-
-function readSettings(settings) {
-    return {
-        endpoint: settings.get_string('api-endpoint'),
-        model: settings.get_string('model-name'),
-        apiKey: settings.get_string('api-key'),
-        streaming: settings.get_boolean('stream'),
-    };
-}
-
-function currentItem() {
-    const state = store.loadStack();
-    return store.peek(state);
+function friendlyError(error) {
+    const message = String(error?.message ?? error);
+    if (/cancell?ed|Operation was cancelled/i.test(message))
+        return 'Cancelado';
+    if (/Connection refused|Could not connect|Network is unreachable/i.test(message))
+        return 'Gateway offline (conexão recusada)';
+    if (/HTTP 40[13]/.test(message))
+        return `Credenciais recusadas (${message})`;
+    if (/HTTP 404/.test(message))
+        return `Endpoint ou modelo não encontrado (${message})`;
+    if (/HTTP 5\d\d/.test(message))
+        return `Gateway com erro (${message})`;
+    if (/timed? ?out|Timeout/i.test(message))
+        return 'Tempo esgotado';
+    return message;
 }
 
 function writeClipboard(text) {
-    const clip = St.Clipboard.get_default();
-    clip.set_text(St.ClipboardType.CLIPBOARD, text);
+    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
 }
 
+function readClipboard() {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = GLib.timeout_add_seconds(
+            GLib.PRIORITY_DEFAULT,
+            3,
+            () => {
+                if (!settled) {
+                    settled = true;
+                    reject(new Error('Tempo esgotado ao ler o clipboard'));
+                }
+                return GLib.SOURCE_REMOVE;
+            }
+        );
+
+        try {
+            St.Clipboard.get_default().get_text(
+                St.ClipboardType.CLIPBOARD,
+                (_clipboard, text) => {
+                    if (settled)
+                        return;
+                    settled = true;
+                    GLib.source_remove(timer);
+                    resolve(text ?? '');
+                }
+            );
+        } catch (error) {
+            if (!settled) {
+                settled = true;
+                GLib.source_remove(timer);
+                reject(error);
+            }
+        }
+    });
+}
+
+/**
+ * Orchestrates the user-defined shortcuts. It never creates GTK widgets (see
+ * ADR-0009) and never lets an exception escape into the shell's key handler.
+ */
 export function createActions({ settings }) {
-    async function s1PushProcess() {
-        try {
-            const clip = St.Clipboard.get_default();
-            clip.get_text(St.ClipboardType.CLIPBOARD, (_clipboard, text) => {
-                if (!text || !text.trim()) {
-                    Main.notify('Nexus Clip', 'Clipboard vazio');
-                    return;
-                }
-                const trimmed = text.trim();
-                const state = store.loadStack();
-                const nextState = store.push(state, trimmed);
-                const pushedNode = store.peek(nextState);
-                if (!pushedNode || !pushedNode.id) {
-                    Main.notify('Nexus Clip', 'Erro: push failed');
-                    return;
-                }
-                try {
-                    const preset = getActivePreset(settings);
-                    const messages = buildMessages({ system: preset.prompt, user: trimmed });
-                    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                        (async () => {
-                            try {
-                                const cfg = readSettings(settings);
-                                const result = await chat({
-                                    endpoint: cfg.endpoint,
-                                    model: cfg.model,
-                                    apiKey: cfg.apiKey,
-                                    messages,
-                                });
-                                if (typeof result === 'string' && result.trim()) {
-                                    const resultText = result.trim();
-                                    clip.set_text(St.ClipboardType.CLIPBOARD, resultText);
-                                    store.saveStack(null, nextState);
-                                    store.appendHistory(null, {
-                                        id: Date.now(),
-                                        parentId: pushedNode.id,
-                                        text: resultText,
-                                        ts: Date.now(),
-                                    });
-                                    Main.notify('Nexus Clip', 'S1 ok');
-                                } else {
-                                    Main.notify('Nexus Clip', 'Erro: resposta vazia');
-                                }
-                            } catch (e) {
-                                Main.notify('Nexus Clip', 'Erro: ' + e.message);
-                            }
-                        })();
-                        return GLib.SOURCE_REMOVE;
-                    });
-                } catch (e) {
-                    Main.notify('Nexus Clip', 'Erro: ' + e.message);
-                }
-            });
-        } catch (e) {
-            Main.notify('Nexus Clip', 'Erro: ' + e.message);
-        }
+    let destroyed = false;
+    let busy = false;
+    let activeCancellable = null;
+    let livePanel = null;
+
+    function notify(message) {
+        if (!destroyed)
+            Main.notify('Nexus Clip', message);
     }
 
-    // S2: run inference on the current item (active preset), show it live in a
-    // GTK window, and let the user pick a prompt that is enqueued onto the FIFO.
-    async function s2Choose() {
-        try {
-            const item = currentItem();
-            if (!item || !item.text) {
-                Main.notify('Nexus Clip', 'Pilha vazia: use S1 primeiro');
-                return;
-            }
-
-            let preset;
-            try {
-                preset = getActivePreset(settings);
-            } catch (e) {
-                Main.notify('Nexus Clip', e.message);
-                return;
-            }
-
-            const cfg = readSettings(settings);
-            const messages = buildMessages({ system: preset.prompt, user: item.text });
-            const presets = parsePresets(settings);
-
-            let selectWindow = null;
-            selectWindow = openSelector({
-                presets,
-                withResponse: true,
-                onChoose: (name, text) => {
-                    const fifo = store.loadFifo();
-                    const next = store.enqueue(fifo, text);
-                    store.saveFifo(null, next);
-                    Main.notify('Nexus Clip', `FIFO += ${name} (${next.items.length})`);
-                },
-            });
-
-            const append = (d) => {
-                if (!selectWindow) return;
-                try {
-                    selectWindow.appendResponse(d);
-                } catch (_e) { /* window may have been closed */ }
-            };
-            const setResp = (t) => {
-                if (!selectWindow) return;
-                try {
-                    selectWindow.setResponse(t);
-                } catch (_e) { /* window may have been closed */ }
-            };
-
-            let resultText = '';
-            if (cfg.streaming) {
-                resultText = await stream({
-                    endpoint: cfg.endpoint,
-                    model: cfg.model,
-                    apiKey: cfg.apiKey,
-                    messages,
-                    onDelta: (d) => { resultText += d; append(d); },
-                    onError: (e) => Main.notify('Nexus Clip', 'Erro: ' + e.message),
-                });
-            } else {
-                resultText = await chat({
-                    endpoint: cfg.endpoint,
-                    model: cfg.model,
-                    apiKey: cfg.apiKey,
-                    messages,
-                });
-                setResp(resultText);
-            }
-
-            if (typeof resultText === 'string' && resultText.trim()) {
-                const finalText = resultText.trim();
-                // never discard the result without writing it to the clipboard
-                writeClipboard(finalText);
-                store.appendHistory(null, {
-                    id: Date.now(),
-                    parentId: item.id,
-                    text: finalText,
-                    ts: Date.now(),
-                });
-            } else {
-                Main.notify('Nexus Clip', 'Erro: resposta vazia');
-            }
-        } catch (e) {
-            Main.notify('Nexus Clip', 'Erro: ' + e.message);
-        }
+    function findShortcut(id) {
+        return parseShortcuts(settings.get_string('shortcuts'))
+            .find(shortcut => shortcut.id === id) ?? null;
     }
 
-    // S3: pop ONE prompt off the FIFO, apply it to the current item, write the
-    // result to the clipboard (enables manual intermediate paste) and report the
-    // next prompt. Must NOT drain the whole FIFO in a single activation.
-    async function s3Loop() {
-        try {
-            const item = currentItem();
-            if (!item || !item.text) {
-                Main.notify('Nexus Clip', 'Pilha vazia: use S1 primeiro');
-                return;
-            }
+    async function infer({ prompt, input, label }) {
+        const cfg = readApiConfig(settings);
+        const messages = buildMessages({ system: prompt, user: input });
+        const cancellable = new Gio.Cancellable();
+        activeCancellable = cancellable;
 
-            const fifo = store.loadFifo();
-            const { state: nextFifo, item: step } = store.dequeue(fifo);
-            if (!step) {
-                Main.notify('Nexus Clip', 'FIFO vazia (nada a processar)');
-                return;
-            }
-            // consume exactly one step, persist immediately
-            store.saveFifo(null, nextFifo);
-
-            const cfg = readSettings(settings);
-            const messages = buildMessages({ system: step.prompt, user: item.text });
-
-            const result = await chat({
+        if (!cfg.streaming) {
+            return await chat({
                 endpoint: cfg.endpoint,
                 model: cfg.model,
                 apiKey: cfg.apiKey,
                 messages,
+                cancellable,
+                timeoutSeconds: cfg.timeoutSeconds,
             });
+        }
 
-            if (typeof result !== 'string' || !result.trim()) {
-                Main.notify('Nexus Clip', 'Erro: resposta vazia');
-                return;
-            }
-            const resultText = result.trim();
-            writeClipboard(resultText);
-            store.appendHistory(null, {
-                id: Date.now(),
-                parentId: item.id,
-                text: resultText,
-                ts: Date.now(),
-                prompt: step.prompt,
+        const panel = createLivePanel({ title: label });
+        livePanel = panel;
+        try {
+            return await stream({
+                endpoint: cfg.endpoint,
+                model: cfg.model,
+                apiKey: cfg.apiKey,
+                messages,
+                cancellable,
+                timeoutSeconds: cfg.timeoutSeconds,
+                onDelta: delta => panel.append(delta),
             });
-
-            const remaining = nextFifo.items.length;
-            if (remaining === 0) {
-                Main.notify('Nexus Clip', 'Loop concluído — resultado final no clipboard');
-            } else {
-                const nextPrompt = String(nextFifo.items[0].prompt || '').slice(0, 40);
-                Main.notify('Nexus Clip', `Passo ok. Próximo: ${nextPrompt}`);
-            }
-        } catch (e) {
-            Main.notify('Nexus Clip', 'Erro: ' + e.message);
+        } finally {
+            panel.close();
+            if (livePanel === panel)
+                livePanel = null;
         }
     }
 
-    return { s1PushProcess, s2Choose, s3Loop };
+    function requirePrompt(shortcut) {
+        const prompt = String(shortcut.prompt ?? '').trim();
+        if (!prompt) {
+            notify(`"${shortcut.label}" está sem prompt — configure em Preferências`);
+            return null;
+        }
+        return prompt;
+    }
+
+    async function doPushProcess(shortcut) {
+        const prompt = requirePrompt(shortcut);
+        if (!prompt)
+            return;
+
+        const clipboard = await readClipboard();
+        if (!clipboard || !clipboard.trim()) {
+            notify('Clipboard do sistema vazio');
+            return;
+        }
+
+        const text = clipboard.trim();
+        let state = store.loadStack();
+        const previousTop = store.peek(state);
+        let inputNode;
+
+        if (previousTop && previousTop.text === text) {
+            // The clipboard already holds the current top (usually the last
+            // result): reuse it instead of duplicating the node.
+            inputNode = previousTop;
+        } else {
+            const pushed = store.pushNode(state, text, { kind: 'input' });
+            state = pushed.state;
+            inputNode = pushed.node;
+            store.saveStack(null, state);
+        }
+
+        const result = await infer({
+            prompt,
+            input: inputNode.text,
+            label: shortcut.label,
+        });
+        const output = String(result ?? '').trim();
+        if (!output) {
+            notify('Resposta vazia');
+            return;
+        }
+
+        const saved = store.pushResult(state, output, {
+            parentId: inputNode.id,
+            prompt,
+        });
+        store.saveStack(null, saved.state);
+        // The system clipboard is intentionally NOT touched here: Nexus has its
+        // own clipboard (the stack top). Export is an explicit action.
+        store.appendHistory(null, {
+            id: saved.node.id,
+            parentId: inputNode.id,
+            text: output,
+            ts: Date.now(),
+            prompt,
+            mode: shortcut.mode,
+            label: shortcut.label,
+        });
+        notify(`✓ ${shortcut.label} · topo do Nexus (pilha ${saved.state.items.length})`);
+    }
+
+    async function doProcess(shortcut) {
+        const prompt = requirePrompt(shortcut);
+        if (!prompt)
+            return;
+
+        const state = store.loadStack();
+        const top = store.peek(state);
+        if (!top) {
+            notify('Pilha do Nexus vazia — importe algo com "Importar e processar"');
+            return;
+        }
+
+        const result = await infer({
+            prompt,
+            input: top.text,
+            label: shortcut.label,
+        });
+        const output = String(result ?? '').trim();
+        if (!output) {
+            notify('Resposta vazia');
+            return;
+        }
+
+        const saved = store.pushResult(state, output, {
+            parentId: top.id,
+            prompt,
+        });
+        store.saveStack(null, saved.state);
+        // Result stays in the Nexus stack; use "Copiar topo" to export.
+        store.appendHistory(null, {
+            id: saved.node.id,
+            parentId: top.id,
+            text: output,
+            ts: Date.now(),
+            prompt,
+            mode: shortcut.mode,
+            label: shortcut.label,
+        });
+        notify(`✓ ${shortcut.label} · topo do Nexus (pilha ${saved.state.items.length})`);
+    }
+
+    function doEnqueue(shortcut) {
+        const prompt = requirePrompt(shortcut);
+        if (!prompt)
+            return;
+        const fifo = store.loadFifo();
+        const next = store.enqueue(fifo, prompt, { label: shortcut.label });
+        store.saveFifo(null, next);
+        notify(`Fila += ${shortcut.label} (${next.items.length})`);
+    }
+
+    async function doRunNext() {
+        const stack = store.loadStack();
+        const top = store.peek(stack);
+        if (!top) {
+            notify('Pilha do Nexus vazia — importe algo com "Importar e processar"');
+            return;
+        }
+
+        const fifo = store.loadFifo();
+        const dequeued = store.dequeue(fifo);
+        if (!dequeued.item) {
+            notify('Fila vazia — enfileire um prompt');
+            return;
+        }
+
+        const result = await infer({
+            prompt: dequeued.item.prompt,
+            input: top.text,
+            label: dequeued.item.label ?? 'Fila',
+        });
+        const output = String(result ?? '').trim();
+        if (!output) {
+            notify('Resposta vazia — passo mantido na fila');
+            return;
+        }
+
+        const saved = store.pushResult(stack, output, {
+            parentId: top.id,
+            prompt: dequeued.item.prompt,
+        });
+        store.saveStack(null, saved.state);
+        // Consume only after success: a failed step can be retried.
+        store.saveFifo(null, dequeued.state);
+        store.appendHistory(null, {
+            id: saved.node.id,
+            parentId: top.id,
+            text: output,
+            ts: Date.now(),
+            prompt: dequeued.item.prompt,
+            mode: 'run-next',
+            label: dequeued.item.label ?? 'Fila',
+        });
+
+        if (dequeued.state.items.length === 0)
+            notify('Fila concluída — resultado no topo do Nexus');
+        else
+            notify(`Passo ok · próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
+    }
+
+    async function doDrain() {
+        const stack = store.loadStack();
+        const top = store.peek(stack);
+        if (!top) {
+            notify('Pilha do Nexus vazia — importe algo com "Importar e processar"');
+            return;
+        }
+
+        let fifo = store.loadFifo();
+        if (fifo.items.length === 0) {
+            notify('Fila vazia — enfileire um prompt');
+            return;
+        }
+
+        const total = fifo.items.length;
+        let state = stack;
+        let parent = top;
+        let currentText = top.text;
+        let steps = 0;
+
+        while (fifo.items.length > 0) {
+            const dequeued = store.dequeue(fifo);
+            if (!dequeued.item)
+                break;
+
+            const result = await infer({
+                prompt: dequeued.item.prompt,
+                input: currentText,
+                label: `Fila ${steps + 1}/${total}`,
+            });
+            const output = String(result ?? '').trim();
+            if (!output) {
+                notify(`Resposta vazia no passo ${steps + 1} — fila preservada`);
+                return;
+            }
+
+            const saved = store.pushResult(state, output, {
+                parentId: parent.id,
+                prompt: dequeued.item.prompt,
+            });
+            state = saved.state;
+            parent = saved.node;
+            currentText = output;
+            fifo = dequeued.state;
+            steps++;
+
+            store.saveStack(null, state);
+            store.saveFifo(null, fifo);
+            store.appendHistory(null, {
+                id: saved.node.id,
+                parentId: saved.node.parentId,
+                text: output,
+                ts: Date.now(),
+                prompt: dequeued.item.prompt,
+                mode: 'drain',
+                step: steps,
+            });
+        }
+
+        notify(`Fila concluída (${steps} passo(s)) — resultado no topo do Nexus`);
+    }
+
+    function doPop() {
+        const current = store.loadStack();
+        const popped = store.pop(current);
+        if (!popped.item) {
+            notify('Pilha do Nexus vazia');
+            return;
+        }
+        store.saveStack(null, popped.state);
+        const top = store.peek(popped.state);
+        if (top)
+            notify(`Voltou ao item anterior: ${preview(top.text)}`);
+        else
+            notify('Último item descartado — pilha do Nexus vazia');
+    }
+
+    function doCopyTop() {
+        const top = store.peek(store.loadStack());
+        if (!top) {
+            notify('Pilha do Nexus vazia');
+            return;
+        }
+        writeClipboard(top.text);
+        notify(`Topo do Nexus copiado para o sistema · ${preview(top.text)}`);
+    }
+
+    async function execute(shortcut) {
+        switch (shortcut.mode) {
+        case 'push-process':
+            return await doPushProcess(shortcut);
+        case 'process':
+            return await doProcess(shortcut);
+        case 'copy-top':
+            return doCopyTop();
+        case 'enqueue':
+            return doEnqueue(shortcut);
+        case 'run-next':
+            return await doRunNext();
+        case 'drain':
+            return await doDrain();
+        case 'pop':
+            return doPop();
+        default:
+            notify(`Ação desconhecida: ${shortcut.mode}`);
+            return undefined;
+        }
+    }
+
+    function runById(id) {
+        if (destroyed)
+            return;
+
+        const shortcut = findShortcut(id);
+        if (!shortcut)
+            return;
+
+        if (shortcut.mode === 'show') {
+            showStackView({
+                stack: store.loadStack(),
+                fifo: store.loadFifo(),
+            });
+            return;
+        }
+
+        if (busy) {
+            notify('Ocupado — aguarde a operação atual');
+            return;
+        }
+        if (needsPrompt(shortcut.mode) && !String(shortcut.prompt ?? '').trim()) {
+            notify(`"${shortcut.label}" está sem prompt — configure em Preferências`);
+            return;
+        }
+
+        busy = true;
+        Promise.resolve()
+            .then(() => execute(shortcut))
+            .catch(error => notify(`Erro: ${friendlyError(error)}`))
+            .finally(() => {
+                busy = false;
+                activeCancellable = null;
+                if (livePanel) {
+                    livePanel.close();
+                    livePanel = null;
+                }
+            });
+    }
+
+    function destroy() {
+        destroyed = true;
+        busy = false;
+        if (activeCancellable) {
+            try {
+                activeCancellable.cancel();
+            } catch (_e) {
+                // already cancelled
+            }
+            activeCancellable = null;
+        }
+        if (livePanel) {
+            livePanel.close();
+            livePanel = null;
+        }
+        closeAllOverlays();
+    }
+
+    return { runById, destroy };
 }

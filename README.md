@@ -1,16 +1,19 @@
-# Nexus Clip GNOME Shell Extension
+# Nexus Clip — GNOME Shell extension
 
-Clipboard-driven LLM pipeline: a **LIFO stack** of copied inputs, a **FIFO** of chosen
-prompts, and inference via an OpenAI-compatible `/v1` endpoint. It reads and writes the
-clipboard **only** when you press one of its shortcuts.
+A **Nexus clipboard** for GNOME Shell: a LIFO stack of inputs and results, a FIFO of
+prompts, and inference through an OpenAI-compatible `/v1` endpoint.
 
-> POC (proof of concept). The `/v1` HTTP contract is the intended integration seam for a
-> later C + llama.cpp implementation; only OpenAI-compatible `/v1/chat/completions` is
-> supported.
+The key design rule: **Nexus has its own clipboard; the system clipboard is separate.**
+Nexus never reads or writes the system clipboard behind your back. It only touches it
+when *you* invoke an explicit import or export action. Your normal `Ctrl+C` / `Ctrl+V`
+keep working exactly as before.
+
+> POC. The `/v1/chat/completions` HTTP contract is the integration seam for a later
+> C + llama.cpp implementation. Only OpenAI-compatible endpoints are supported.
 
 ## Requirements
 
-- GNOME Shell 45-50 (developed/validated on **50.3 Wayland**).
+- GNOME Shell 45–50 (developed/validated on **50.3 Wayland**).
 - A reachable OpenAI-compatible endpoint. Defaults to the local Nexus Gateway:
   `http://localhost:8010/v1/chat/completions`.
 
@@ -18,17 +21,28 @@ clipboard **only** when you press one of its shortcuts.
 
 ```bash
 cd /var/home/bruno/repos/nexus-clip-gnome
-make install          # compiles schemas + copies metadata.json, extension.js, prefs.js, lib/, schemas/
+make install          # compile schemas + copy extension files to ~/.local/share/gnome-shell/extensions
 make enable
 ```
 
-On **Wayland** a freshly installed extension is not visible to the running shell until it
-is reloaded. Either log out and back in, or on X11 press `Alt+F2` → `r` → Enter. After the
-reload, verify with:
+On **Wayland** the running shell only sees a newly installed extension after a reload:
+log out and back in (on X11: `Alt+F2` → `r` → Enter). Then verify:
 
 ```bash
 gnome-extensions info nexus-clip@bbanho   # State: ENABLED
 ```
+
+## Default shortcuts
+
+| Key | Name | What it does |
+|-----|------|--------------|
+| `<Alt><Super>v` | **Importar e processar** | Reads the **system clipboard**, imports the text into Nexus, applies this shortcut's prompt, and pushes the result onto the Nexus stack. The system clipboard is **not** overwritten. |
+| `<Alt><Super>c` | **Processar pilha** | Applies this shortcut's prompt to the **top of the Nexus stack** and pushes the result as a new node. |
+
+Results stay in Nexus. To move one back to the system clipboard, use the **Copiar topo
+do Nexus para o sistema** action — it ships as an unbound template in Preferências, so
+capture a key there once. The stack viewer (action **Mostrar pilha e fila**) also copies
+the selected item on `Enter`.
 
 ## Configure
 
@@ -36,81 +50,115 @@ gnome-extensions info nexus-clip@bbanho   # State: ENABLED
 gnome-extensions prefs nexus-clip@bbanho
 ```
 
-Groups: **API** (`api-endpoint`, `model-name`, `api-key`, `stream`) and **Presets**
-(a JSON object), plus **Atalhos** (three accelerator entries).
+- **API** — endpoint, model, API key, streaming (SSE), request timeout.
+- **Atalhos e prompts** — one expander per shortcut:
+  - **Nome** — free-form label (shown in notifications and the HUD).
+  - **Atalho** — click **Definir…** and press the combination. `Esc` cancels; `Backspace`
+    clears the binding. At least one of `Super`, `Alt`, `Ctrl`, or `Hyper` is required.
+  - **Ação** — `Importar do sistema + processar`, `Processar topo do Nexus`,
+    `Copiar topo do Nexus para o sistema`, `Enfileirar prompt`, `Rodar próximo da fila`,
+    `Rodar fila inteira`, `Desfazer (voltar um item)`, `Mostrar pilha e fila`.
+  - **Prompt do usuário** — sent as the `system` message; each shortcut has its own
+    prompt. Prompt-based actions refuse to run with an empty prompt.
+  - **Adicionar / remover** — up to 12 shortcuts.
+- **Nexus — pilha, fila e histórico** — item counts, current top, data directory, and
+  buttons to clear the stack, the queue, and the history.
 
-- `presets` is a JSON **object** mapping `name -> prompt text`, e.g.
-  ```json
-  {
-    "fix-pt": "Corrija o português, mantendo o sentido e o tom.",
-    "summarize": "Resuma em no máximo 2 linhas, em português.",
-    "explain-code": "Explique este código de forma concisa, em português.",
-    "translate-en": "Traduza para inglês natural, mantendo termos técnicos quando necessário."
-  }
-  ```
-- **The "active preset" used by S1/S2 is the FIRST key of that object.** Reorder the JSON
-  to change which prompt is active.
-- `stream` (default `false`) turns on SSE streaming; in S2 the response then appears
-  live in the selector window.
-- `api-key` lives in GSettings/dconf only — never in the repo.
+Shortcuts are stored as a JSON array in GSettings (`shortcuts`). The extension mirrors
+the active bindings into `hotkey-slot-0..11` because `Main.wm.addKeybinding()` needs a
+schema key. Editing a prompt or label does not re-grab keys; changing an accelerator does.
 
-## Shortcuts
+### Migration from the old `presets` object
 
-| Key | Action | Semantics |
-|-----|--------|-----------|
-| `<Super>c` | **S1 push+process** | Reads the clipboard → pushes it onto the LIFO stack → runs inference with the active preset → writes the result to the clipboard and appends a history node. |
-| `<Super>x` | **S2 choose** | Takes the current item (top of the stack), runs inference (live in a GTK window when `stream=true`), writes the result to the clipboard, and opens a GTK window listing the presets. The prompt you pick is enqueued onto the FIFO. |
-| `<Super>v` | **S3 loop** | Pops **one** prompt off the FIFO, applies it to the current item, writes the result to the clipboard (so you can paste in between) and reports the next prompt. When the FIFO empties it reports the final result. Press it again for each step. |
+On first enable after upgrading, the legacy `presets` JSON object is converted:
+its first prompt feeds the two default shortcuts, and the remaining prompts become
+unbound shortcuts (just capture keys for the ones you want). The old `presets` key is
+kept for reference only.
 
-All three are remappable in prefs (avoid `<Ctrl><Super>o` / `<Ctrl><Super>p`, used by the
-`llm-text-modifier` extension).
+## Nexus clipboard model
+
+- `stack.json` is the Nexus clipboard: newest item first (**LIFO**).
+- `fifo.json` is a queue of prompts (**FIFO**).
+- Every successful inference appends a **result node** whose `parentId` points at the
+  item that was processed. A result can be processed again, forming a chain.
+- **Desfazer** pops the newest node; the previous node becomes the Nexus clipboard again.
+- **Importar do sistema + processar** is the only action that reads the system clipboard.
+- **Copiar topo** and the HUD `Enter` are the only actions that write it.
+- No action writes results to the system clipboard automatically.
 
 ## State (on disk)
 
 ```
-~/.local/share/nexus-clip-gnome/stack.json      # LIFO of inputs: { schemaVersion, items:[{id,parentId,text,ts}] }
-~/.local/share/nexus-clip-gnome/fifo.json       # FIFO of chosen prompts: { schemaVersion, items:[{id,prompt,ts}] }
-~/.local/share/nexus-clip-gnome/history.jsonl   # append-only inference history (prepares the future tree)
+~/.local/share/nexus-clip-gnome/stack.json      # LIFO nodes: {schemaVersion, items:[...]}
+~/.local/share/nexus-clip-gnome/fifo.json       # FIFO prompts: {schemaVersion, items:[...]}
+~/.local/share/nexus-clip-gnome/history.jsonl   # append-only inference log
 ```
 
-Override the directory with `NEXUS_CLIP_DATA_DIR` (used by the tests). The node shape
-already carries `id`/`parentId` so a branching tree can be layered on later without a
-schema break.
+A stack node looks like:
+
+```json
+{
+  "id": "res_...",
+  "parentId": "item_...",
+  "text": "resultado",
+  "ts": 0,
+  "kind": "result",
+  "prompt": "Corrija o português..."
+}
+```
+
+Override the directory with `NEXUS_CLIP_DATA_DIR` (used by tests). `schemaVersion: 1`
+leaves room for a future branching tree without a shape break.
 
 ## Tests
 
-Pure logic (state store, SSE parser, `/v1` payload/parse) runs outside the shell:
+Pure logic runs under Node; the Gio persistence adapter and the live HTTP client have
+GJS smoke tests:
 
 ```bash
-node --test        # 25 tests
+make check   # node --test + node --check on every module + GJS store smoke + schema compile
+make smoke   # live gateway: chat() and stream() against :8010
 ```
 
-UI/wiring (keybindings, `St.Clipboard`, GTK windows) is validated manually in the shell —
-see `EVIDENCE.md`.
+`make smoke` requires the gateway. `make check` does not touch the network.
+
+Enable the local gate once per clone:
+
+```bash
+make hooks   # core.hooksPath=.githooks; pre-commit and pre-push run make check
+```
+
+GitHub Actions runs the same `make check` on every pull request
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The tests cover the
+[critical points](docs/CRITICAL_POINTS.md): no GTK in the shell process, no implicit
+clipboard writes, accelerator validation, result-node semantics, and malformed-state
+resilience. `make smoke` is intentionally not part of CI because it needs the local
+gateway.
 
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module map, lifecycle, S1/S2/S3 flow diagrams, state model, HTTP contract, settings. |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Pure/impure split, build/install/reload, tests, live smoke test, debugging. |
-| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Failure modes: enable after install, hotkey conflicts, gateway/model errors, hangs. |
-| [`docs/adr/`](docs/adr/README.md) | Decision log (ADR-0001..0007). |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module map, lifecycle, data flows, state model, HTTP contract, settings. |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Pure/impure split, build/install/reload, tests, smoke tests, debugging. |
+| [`docs/CRITICAL_POINTS.md`](docs/CRITICAL_POINTS.md) | Invariants (freeze, clipboard boundary, state) mapped to tests and enforcement. |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Enable-after-install, the old Super+X freeze, clipboard, gateway/model errors. |
+| [`docs/adr/`](docs/adr/README.md) | Decision log (ADR-0001..0010). |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history (Keep a Changelog). |
 | [`EVIDENCE.md`](EVIDENCE.md) | E2E validation runbook + recorded evidence. |
 | [`llms.txt`](llms.txt) | Compact index for AI agents. |
 
-## Known limitations / notes (POC)
+## Known limitations (POC)
 
-- **Wayland**: `St.Clipboard` only sees clipboard text the shell owns; a shell reload
-  (logout/login) is required after install.
-- **Active preset = first key** of the `presets` object (see above).
-- **S3 is stepwise by design** — one prompt per keypress, to allow manual intermediate
-  paste. It never drains the FIFO in a single activation.
-- **Gateway note**: the Nexus Gateway keeps the HTTP socket open after sending
-  `data: [DONE]`; the client therefore treats `[DONE]` as terminal instead of waiting for
-  EOF.
-- Non-Goals for the POC: no tree/branching yet, no C++/llama.cpp, no providers other than
+- **Wayland import**: `St.Clipboard` reads the system clipboard at keypress time; copy
+  immediately before pressing **Importar e processar**. If the read stalls, a 3 s
+  timeout reports an error instead of hanging the action.
+- **No automatic export**: by design, results are not copied to the system clipboard.
+  Bind **Copiar topo** (or use the HUD `Enter`) when you want to paste elsewhere.
+- **Active shortcut prompts are per shortcut**, not a global "active preset".
+- **Gateway note**: the Nexus Gateway keeps the HTTP socket open after `data: [DONE]`;
+  the client treats `[DONE]` as terminal instead of waiting for EOF.
+- Non-goals: no tree/branching UI yet, no C++/llama.cpp, no providers other than
   OpenAI-compatible `/v1/chat/completions`, no embeddings/vector store.
 
 ## Uninstall
