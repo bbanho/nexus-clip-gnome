@@ -13,8 +13,11 @@ import {
     needsPrompt,
     validateShortcuts,
 } from './lib/shortcuts.js';
-import { loadShortcuts, saveShortcuts } from './lib/config.js';
+import { loadShortcuts, readApiConfig, saveShortcuts } from './lib/config.js';
 import * as store from './lib/store.js';
+import { buildMessages } from './lib/v1core.js';
+import { chat } from './lib/v1client.js';
+import { middlePreview } from './lib/text-preview.js';
 
 const MOD_MASK =
     Gdk.ModifierType.SHIFT_MASK |
@@ -54,6 +57,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         this._shortcuts = loadShortcuts(this._settings);
         this._saveSourceId = 0;
         this._mountedRows = [];
+        this._stackRows = [];
 
         const page = new Adw.PreferencesPage();
         window.add(page);
@@ -438,6 +442,20 @@ export default class NexusClipPreferences extends ExtensionPreferences {
     _buildStackGroup(page) {
         const group = new Adw.PreferencesGroup({ title: 'Nexus — pilha, fila e histórico' });
         page.add(group);
+        this._stackGroup = group;
+
+        this._processShortcuts = this._shortcuts.filter(shortcut =>
+            needsPrompt(shortcut.mode)
+        );
+        this._processModeRow = new Adw.ComboRow({
+            title: 'Prompt para processar itens',
+            subtitle: 'Escolha qual atalho será aplicado ao item selecionado',
+            model: Gtk.StringList.new(
+                this._processShortcuts.map(item => item.label || 'Atalho sem nome')
+            ),
+            selected: 0,
+        });
+        group.add(this._processModeRow);
 
         this._stackRow = new Adw.ActionRow({ title: 'Pilha LIFO' });
         group.add(this._stackRow);
@@ -497,10 +515,58 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         const fifo = store.loadFifo();
         const top = store.peek(stack);
 
+        for (const row of this._stackRows)
+            this._stackGroup.remove(row);
+        this._stackRows = [];
+
         this._stackRow.set_title(`Pilha do Nexus (${stack.items.length})`);
         this._stackRow.set_subtitle(
             top ? `${top.kind === 'result' ? 'resultado' : 'entrada'}: ${preview(top.text)}` : 'vazia'
         );
+
+        stack.items.forEach((item, index) => {
+            const row = new Adw.ActionRow({
+                title: `#${index + 1} · ${item.kind === 'result' ? 'Resultado' : 'Entrada'}`,
+                subtitle: middlePreview(item.text),
+            });
+            row.set_tooltip_text(item.text);
+
+            const copyButton = new Gtk.Button({
+                label: 'Copiar',
+                valign: Gtk.Align.CENTER,
+                tooltip_text: 'Copiar item para o clipboard do sistema',
+            });
+            copyButton.connect('clicked', () => {
+                Gdk.Display.get_default().get_clipboard().set(item.text);
+            });
+            row.add_suffix(copyButton);
+
+            const processButton = new Gtk.Button({
+                label: 'Processar',
+                valign: Gtk.Align.CENTER,
+                sensitive: this._processShortcuts.length > 0,
+                tooltip_text: 'Processar este item com o prompt selecionado',
+            });
+            processButton.add_css_class('suggested-action');
+            processButton.connect('clicked', () => this._processStackItem(item, processButton));
+            row.add_suffix(processButton);
+
+            const removeButton = new Gtk.Button({
+                icon_name: 'user-trash-symbolic',
+                valign: Gtk.Align.CENTER,
+                tooltip_text: 'Remover este item da pilha',
+            });
+            removeButton.add_css_class('destructive-action');
+            removeButton.connect('clicked', () => {
+                const result = store.removeNode(store.loadStack(), item.id);
+                store.saveStack(null, result.state);
+                this._refreshStackRows();
+            });
+            row.add_suffix(removeButton);
+
+            this._stackGroup.add(row);
+            this._stackRows.push(row);
+        });
 
         this._fifoRow.set_title(`Fila FIFO (${fifo.items.length})`);
         this._fifoRow.set_subtitle(
@@ -508,6 +574,57 @@ export default class NexusClipPreferences extends ExtensionPreferences {
                 ? `próximo: ${preview(fifo.items[0].prompt, 110)}`
                 : 'vazia'
         );
+    }
+
+    async _processStackItem(item, button) {
+        const shortcut = this._processShortcuts[this._processModeRow.get_selected()];
+        if (!shortcut)
+            return;
+        const prompt = String(shortcut.prompt ?? '').trim();
+        if (!prompt)
+            return;
+
+        button.set_sensitive(false);
+        button.set_label('Processando…');
+        try {
+            const config = readApiConfig(this._settings);
+            const result = await chat({
+                endpoint: config.endpoint,
+                model: config.model,
+                apiKey: config.apiKey,
+                messages: buildMessages({ system: prompt, user: item.text }),
+                timeoutSeconds: config.timeoutSeconds,
+            });
+            const output = String(result ?? '').trim();
+            if (!output)
+                throw new Error('Resposta vazia');
+
+            const current = store.loadStack();
+            const parent = current.items.find(node => node.id === item.id);
+            if (!parent)
+                throw new Error('O item foi removido durante o processamento');
+            const saved = store.pushResult(current, output, {
+                parentId: item.id,
+                prompt,
+            });
+            store.saveStack(null, saved.state);
+            store.appendHistory(null, {
+                id: saved.node.id,
+                parentId: item.id,
+                text: output,
+                ts: Date.now(),
+                prompt,
+                mode: 'prefs-process-item',
+                label: shortcut.label,
+            });
+            this._refreshStackRows();
+        } catch (error) {
+            button.set_tooltip_text(`Falha ao processar: ${error.message}`);
+            button.set_label('Erro');
+            return;
+        }
+        button.set_sensitive(true);
+        button.set_label('Processar');
     }
 
     // ------------------------------------------------------------------

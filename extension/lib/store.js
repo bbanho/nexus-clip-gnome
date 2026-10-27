@@ -76,5 +76,6 @@ export {
     push,
     pushNode,
     pushResult,
+    removeNode,
     serializeState,
 } from './store-core.js';

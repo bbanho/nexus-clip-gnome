@@ -12,6 +12,7 @@ import {
     push,
     pushNode,
     pushResult,
+    removeNode,
     serializeState,
 } from '../extension/lib/store-core.js';
 
@@ -86,6 +87,19 @@ test('pop on an empty stack returns null', () => {
     const result = pop(emptyState());
     assert.equal(result.item, null);
     assert.equal(result.state.items.length, 0);
+});
+
+test('removeNode removes a selected item and preserves the remaining order', () => {
+    let state = push(emptyState(), 'oldest');
+    state = push(state, 'middle');
+    state = push(state, 'newest');
+    const target = state.items[1];
+    const removed = removeNode(state, target.id);
+
+    assert.equal(removed.item.id, target.id);
+    assert.deepEqual(removed.state.items.map(item => item.text), ['newest', 'oldest']);
+    assert.equal(state.items.length, 3, 'the original state is not mutated');
+    assert.equal(removeNode(state, 'missing').item, null);
 });
 
 test('enqueue/dequeue is FIFO', () => {
