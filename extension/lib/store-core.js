@@ -155,6 +155,16 @@ export function pop(state) {
     return { state: next, item };
 }
 
+/** Remove a specific stack item without changing the order of the others. */
+export function removeNode(state, id) {
+    const next = cloneState(state);
+    const index = next.items.findIndex(item => item.id === id);
+    if (index < 0)
+        return { state: next, item: null };
+    const [item] = next.items.splice(index, 1);
+    return { state: next, item };
+}
+
 export function peek(state) {
     if (!state || !Array.isArray(state.items) || state.items.length === 0)
         return null;

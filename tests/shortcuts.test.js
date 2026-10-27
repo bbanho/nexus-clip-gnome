@@ -53,6 +53,22 @@ test('parseShortcuts sanitizes entries and canonicalizes accelerators', () => {
     assert.ok(shortcut.id.startsWith('sc_auto_'));
 });
 
+test('parseShortcuts preserves independent user-authored multi-step prompts', () => {
+    const prompts = [
+        'Corrija sem alterar o tom.\n\nPreserve termos técnicos.',
+        'Resuma em três tópicos.',
+    ];
+    const parsed = parseShortcuts(JSON.stringify(prompts.map((prompt, index) => ({
+        id: `custom_${index}`,
+        label: `Meu prompt ${index + 1}`,
+        mode: 'process',
+        prompt,
+    }))));
+
+    assert.deepEqual(parsed.map(item => item.prompt), prompts);
+    assert.deepEqual(parsed.map(item => item.label), ['Meu prompt 1', 'Meu prompt 2']);
+});
+
 test('parseShortcuts generates deterministic ids for missing ids', () => {
     const raw = JSON.stringify([{ accel: '<Super><Alt>v' }]);
     assert.equal(parseShortcuts(raw)[0].id, parseShortcuts(raw)[0].id);

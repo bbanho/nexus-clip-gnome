@@ -10,6 +10,14 @@ test('buildMessages with system', () => {
   ]);
 });
 
+test('buildMessages sends a composed custom prompt verbatim as the system message', () => {
+    const prompt = '1. Corrija o texto.\n2. Preserve o tom original.\n3. Liste as mudanças.';
+    assert.deepEqual(buildMessages({ system: prompt, user: 'texto de exemplo' }), [
+        { role: 'system', content: prompt },
+        { role: 'user', content: 'texto de exemplo' },
+    ]);
+});
+
 test('buildMessages without system', () => {
   const messages = buildMessages({ system: '', user: 'hi' });
   assert.deepEqual(messages, [{ role: 'user', content: 'hi' }]);
