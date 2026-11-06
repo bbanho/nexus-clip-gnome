@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
     loadShortcuts,
+    loadPrompts,
     readApiConfig,
+    savePrompts,
     shortcutsSignature,
 } from '../extension/lib/config.js';
 
@@ -59,6 +61,33 @@ test('loadShortcuts respects an explicitly empty list', () => {
     const settings = fakeSettings({ shortcuts: '[]', presets: '{}' });
     assert.deepEqual(loadShortcuts(settings), []);
     assert.equal(settings.data.shortcuts, '[]');
+});
+
+test('loadPrompts migrates existing shortcut prompts into the separate library once', () => {
+    const settings = fakeSettings({ prompts: '' });
+    const prompts = loadPrompts(settings, [
+        { id: 'a', label: 'Revisar', prompt: 'Corrija.' },
+        { id: 'b', label: 'Resumo', prompt: 'Resuma.' },
+    ]);
+    assert.deepEqual(prompts.map(({ label, text }) => ({ label, text })), [
+        { label: 'Revisar', text: 'Corrija.' },
+        { label: 'Resumo', text: 'Resuma.' },
+    ]);
+    assert.equal(loadPrompts(settings, []).length, 2);
+});
+
+test('loadPrompts respects an explicitly empty library', () => {
+    assert.deepEqual(loadPrompts(fakeSettings({ prompts: '[]' }), [
+        { id: 'a', label: 'Legacy', prompt: 'Keep me?' },
+    ]), []);
+});
+
+test('savePrompts persists normalized reusable prompts', () => {
+    const settings = fakeSettings({ prompts: '' });
+    savePrompts(settings, [{ id: 'x', label: ' Custom ', text: ' do this ' }]);
+    assert.deepEqual(JSON.parse(settings.data.prompts), [
+        { id: 'x', label: 'Custom', text: 'do this' },
+    ]);
 });
 
 test('shortcutsSignature ignores prompt/label edits', () => {

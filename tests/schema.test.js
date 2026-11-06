@@ -29,6 +29,7 @@ test('schema no longer exposes the legacy S1/S2/S3 hotkeys', () => {
 test('schema exposes the shortcut model and API keys', () => {
     for (const key of [
         'shortcuts',
+        'prompts',
         'api-endpoint',
         'model-name',
         'api-key',

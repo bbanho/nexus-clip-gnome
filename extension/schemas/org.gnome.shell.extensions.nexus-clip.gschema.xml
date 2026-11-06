@@ -10,6 +10,12 @@
       <summary>User-defined shortcuts and their prompts (JSON array)</summary>
     </key>
 
+    <!-- Reusable user-authored prompts, separate from shortcut bindings. -->
+    <key name="prompts" type="s">
+      <default>''</default>
+      <summary>Reusable user prompt library (JSON array)</summary>
+    </key>
+
     <!-- Internal keybinding slots. The extension mirrors `shortcuts` into
          these keys because Main.wm.addKeybinding() requires a schema key. -->
     <key name="hotkey-slot-0" type="as">

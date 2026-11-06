@@ -65,6 +65,15 @@ invalid combinations are not registered. Preferences also warns about known GNOM
 combinations. The shell mirrors active accelerator values to internal GSettings keys
 `hotkey-slot-0` through `hotkey-slot-11`; do not edit those internal keys directly.
 
+### Prompt library
+
+The **Biblioteca de prompts** section stores reusable instructions separately from the
+shortcut bindings. Add a named prompt, select multiple prompts and choose **Montar
+composição** to join their instructions in list order. The combined text is loaded into the
+editor for review before saving it as another prompt. Stack-item processing can then select
+any saved prompt or composition. On first load, prompts embedded in existing shortcuts are
+copied into the library; the original shortcut prompts remain intact.
+
 To inspect settings using the repository schema:
 
 ```bash
@@ -81,7 +90,9 @@ empty string means first-run/upgrade migration may run.
 If `shortcuts` is unset/empty on first initialization, Nexus migrates the legacy `presets`
 object. The first valid prompt is assigned to the two default bound actions; later prompts
 become unbound shortcut entries. An explicit `[]` is respected and does not trigger
-migration. The legacy `presets` key remains in the schema for migration compatibility.
+migration. The legacy `presets` key remains in the schema for migration compatibility. The
+separate `prompts` library similarly imports existing shortcut prompts once; an explicit
+`[]` means an intentionally empty library.
 
 ## Persistent data
 

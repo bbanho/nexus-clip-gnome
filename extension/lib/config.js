@@ -6,6 +6,7 @@ import {
     parseShortcuts,
     registrationList,
 } from './shortcuts.js';
+import { normalizePrompts, parsePrompts } from './prompts.js';
 
 /**
  * Read the `shortcuts` JSON array. On the first run after an upgrade the key
@@ -28,6 +29,27 @@ export function loadShortcuts(settings) {
 
 export function saveShortcuts(settings, list) {
     settings.set_string('shortcuts', JSON.stringify(list));
+}
+
+/** Load a reusable prompt library, migrating existing shortcut prompts once. */
+export function loadPrompts(settings, shortcuts = []) {
+    const raw = settings.get_string('prompts');
+    if (raw.trim() === '[]')
+        return [];
+    if (raw.trim())
+        return parsePrompts(raw);
+
+    const migrated = normalizePrompts((shortcuts ?? []).map(shortcut => ({
+        id: `prompt_${shortcut.id}`,
+        label: shortcut.label,
+        text: shortcut.prompt,
+    })));
+    savePrompts(settings, migrated);
+    return migrated;
+}
+
+export function savePrompts(settings, prompts) {
+    settings.set_string('prompts', JSON.stringify(normalizePrompts(prompts)));
 }
 
 /** Re-register keybindings only when ids/accelerators actually change. */

@@ -13,11 +13,18 @@ import {
     needsPrompt,
     validateShortcuts,
 } from './lib/shortcuts.js';
-import { loadShortcuts, readApiConfig, saveShortcuts } from './lib/config.js';
+import {
+    loadPrompts,
+    loadShortcuts,
+    readApiConfig,
+    savePrompts,
+    saveShortcuts,
+} from './lib/config.js';
 import * as store from './lib/store.js';
 import { buildMessages } from './lib/v1core.js';
 import { chat } from './lib/v1client.js';
 import { middlePreview } from './lib/text-preview.js';
+import { combinePrompts } from './lib/prompts.js';
 
 const MOD_MASK =
     Gdk.ModifierType.SHIFT_MASK |
@@ -55,6 +62,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         this._window = window;
         this._settings = this.getSettings();
         this._shortcuts = loadShortcuts(this._settings);
+        this._prompts = loadPrompts(this._settings, this._shortcuts);
         this._saveSourceId = 0;
         this._mountedRows = [];
         this._stackRows = [];
@@ -63,6 +71,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         window.add(page);
 
         this._buildApiGroup(page);
+        this._buildPromptLibraryGroup(page);
         this._buildShortcutsGroup(page);
         this._buildStackGroup(page);
         this._buildHelpGroup(page);
@@ -70,6 +79,128 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         window.connect('close-request', () => {
             this._flushSave();
             return false;
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Prompt library
+    // ------------------------------------------------------------------
+
+    _buildPromptLibraryGroup(page) {
+        this._promptGroup = new Adw.PreferencesGroup({ title: 'Biblioteca de prompts' });
+        page.add(this._promptGroup);
+        this._promptRows = [];
+        this._promptChecks = [];
+
+        this._promptNameRow = new Adw.EntryRow({ title: 'Nome do prompt' });
+        this._promptGroup.add(this._promptNameRow);
+
+        const editor = new Gtk.TextView({
+            wrap_mode: Gtk.WrapMode.WORD_CHAR,
+            height_request: 100,
+            top_margin: 8,
+            bottom_margin: 8,
+            left_margin: 8,
+            right_margin: 8,
+        });
+        this._promptBuffer = editor.buffer;
+        const editorRow = new Adw.ActionRow({
+            title: 'Instruções',
+            subtitle: 'Escreva um prompt ou monte uma composição abaixo',
+        });
+        editorRow.add_suffix(new Gtk.Frame({ child: editor, width_request: 380 }));
+        this._promptGroup.add(editorRow);
+
+        const editorActions = new Adw.ActionRow({ title: 'Salvar prompt' });
+        const saveButton = new Gtk.Button({ label: 'Adicionar', valign: Gtk.Align.CENTER });
+        saveButton.add_css_class('suggested-action');
+        saveButton.connect('clicked', () => this._addPromptFromEditor());
+        editorActions.add_suffix(saveButton);
+        editorActions.set_activatable_widget(saveButton);
+        this._promptGroup.add(editorActions);
+
+        this._composeRow = new Adw.ActionRow({
+            title: 'Combinar prompts selecionados',
+            subtitle: 'A ordem segue a lista; a composição será carregada no editor para revisão',
+        });
+        const composeButton = new Gtk.Button({
+            label: 'Montar composição',
+            valign: Gtk.Align.CENTER,
+        });
+        composeButton.connect('clicked', () => this._composeSelectedPrompts());
+        this._composeRow.add_suffix(composeButton);
+        this._promptGroup.add(this._composeRow);
+
+        this._refreshPromptRows();
+    }
+
+    _addPromptFromEditor() {
+        const [start, end] = this._promptBuffer.get_bounds();
+        const text = this._promptBuffer.get_text(start, end, false).trim();
+        const label = this._promptNameRow.get_text().trim();
+        if (!text) {
+            this._composeRow.set_subtitle('Escreva instruções antes de adicionar');
+            return;
+        }
+        this._prompts.push({
+            id: makeId('prompt'),
+            label: label || `Prompt ${this._prompts.length + 1}`,
+            text,
+        });
+        savePrompts(this._settings, this._prompts);
+        this._promptNameRow.set_text('');
+        this._promptBuffer.set_text('', -1);
+        this._composeRow.set_subtitle('Prompt salvo; selecione outros para criar uma composição');
+        this._refreshPromptRows();
+        this._refreshStackRows();
+    }
+
+    _composeSelectedPrompts() {
+        const selected = this._promptChecks
+            .filter(entry => entry.check.get_active())
+            .map(entry => entry.prompt.text);
+        const text = combinePrompts(selected);
+        if (!text) {
+            this._composeRow.set_subtitle('Selecione ao menos um prompt com instruções');
+            return;
+        }
+        this._promptNameRow.set_text(`Composição ${this._prompts.length + 1}`);
+        this._promptBuffer.set_text(text, -1);
+        this._composeRow.set_subtitle('Revise a composição no editor e clique em Adicionar para salvá-la');
+    }
+
+    _refreshPromptRows() {
+        for (const row of this._promptRows)
+            this._promptGroup.remove(row);
+        this._promptRows = [];
+        this._promptChecks = [];
+
+        this._prompts.forEach(prompt => {
+            const row = new Adw.ActionRow({
+                title: prompt.label,
+                subtitle: middlePreview(prompt.text, 140),
+            });
+            const check = new Gtk.CheckButton({
+                valign: Gtk.Align.CENTER,
+                tooltip_text: `Incluir ${prompt.label} na composição`,
+            });
+            row.add_prefix(check);
+            const remove = new Gtk.Button({
+                icon_name: 'user-trash-symbolic',
+                valign: Gtk.Align.CENTER,
+                tooltip_text: 'Remover prompt',
+            });
+            remove.add_css_class('destructive-action');
+            remove.connect('clicked', () => {
+                this._prompts = this._prompts.filter(item => item.id !== prompt.id);
+                savePrompts(this._settings, this._prompts);
+                this._refreshPromptRows();
+                this._refreshStackRows();
+            });
+            row.add_suffix(remove);
+            this._promptGroup.add(row);
+            this._promptRows.push(row);
+            this._promptChecks.push({ prompt, check });
         });
     }
 
@@ -444,16 +575,14 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         page.add(group);
         this._stackGroup = group;
 
-        this._processShortcuts = this._shortcuts.filter(shortcut =>
-            needsPrompt(shortcut.mode)
-        );
+        this._processPrompts = this._prompts;
         this._processModeRow = new Adw.ComboRow({
             title: 'Prompt para processar itens',
-            subtitle: 'Escolha qual atalho será aplicado ao item selecionado',
+            subtitle: 'Escolha uma instrução ou composição da biblioteca',
             model: Gtk.StringList.new(
-                this._processShortcuts.map(item => item.label || 'Atalho sem nome')
+                this._processPrompts.map(item => item.label)
             ),
-            selected: 0,
+            ...(this._processPrompts.length ? { selected: 0 } : {}),
         });
         group.add(this._processModeRow);
 
@@ -515,6 +644,13 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         const fifo = store.loadFifo();
         const top = store.peek(stack);
 
+        this._processPrompts = this._prompts;
+        this._processModeRow.set_model(
+            Gtk.StringList.new(this._processPrompts.map(item => item.label))
+        );
+        if (this._processPrompts.length > 0)
+            this._processModeRow.set_selected(0);
+
         for (const row of this._stackRows)
             this._stackGroup.remove(row);
         this._stackRows = [];
@@ -544,7 +680,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
             const processButton = new Gtk.Button({
                 label: 'Processar',
                 valign: Gtk.Align.CENTER,
-                sensitive: this._processShortcuts.length > 0,
+                sensitive: this._processPrompts.length > 0,
                 tooltip_text: 'Processar este item com o prompt selecionado',
             });
             processButton.add_css_class('suggested-action');
@@ -577,10 +713,10 @@ export default class NexusClipPreferences extends ExtensionPreferences {
     }
 
     async _processStackItem(item, button) {
-        const shortcut = this._processShortcuts[this._processModeRow.get_selected()];
-        if (!shortcut)
+        const promptEntry = this._processPrompts[this._processModeRow.get_selected()];
+        if (!promptEntry)
             return;
-        const prompt = String(shortcut.prompt ?? '').trim();
+        const prompt = String(promptEntry.text ?? '').trim();
         if (!prompt)
             return;
 
@@ -615,7 +751,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
                 ts: Date.now(),
                 prompt,
                 mode: 'prefs-process-item',
-                label: shortcut.label,
+                label: promptEntry.label,
             });
             this._refreshStackRows();
         } catch (error) {
