@@ -8,7 +8,7 @@ automated test where possible; UI-only behavior is marked as manual/E2E.
 |----|----------------|----------------|------|
 | CP-01 | Shell-process modules never import/instantiate GTK, Adw, or Node builtins | A `Gtk.Window` inside the compositor deadlocks Wayland (the old Super+X freeze) | `tests/shell-boundary.test.js` + `rules/no-gtk-in-shell.yml`, `rules/no-node-builtin-in-gjs.yml` |
 | CP-02 | Inference paths never write the system clipboard | Nexus must not clobber the user's clipboard or create feedback loops | `tests/shell-boundary.test.js` (static) + E2E |
-| CP-03 | Only explicit export paths write the system clipboard | `copy-top` and the HUD `Enter`/`Copiar` are the only exports | `tests/shell-boundary.test.js` + `rules/clipboard-write-outside-boundary.yml` |
+| CP-03 | Only explicit export paths write the system clipboard | `copy-top`, the opt-in `mirror-import`, and the HUD `Enter`/`Copiar` are the only exports | `tests/shell-boundary.test.js` + `rules/clipboard-write-outside-boundary.yml` |
 | CP-04 | Every registered accelerator is structurally valid | An accel with no key (`<Alt><Super>`) is silently unusable or a conflict | `tests/shortcuts.test.js` |
 | CP-05 | Duplicate/empty accelerators never reach `addKeybinding` | Duplicate grabs make behavior order-dependent | `tests/shortcuts.test.js` |
 | CP-06 | Result nodes are new nodes with `kind=result` and `parentId` | Chaining/undo depend on it; results must never be deduplicated | `tests/store-core.test.js` |
@@ -23,6 +23,9 @@ automated test where possible; UI-only behavior is marked as manual/E2E.
 | CP-15 | The status chip and live panel never write the system clipboard | Quiet feedback must not become a hidden export path | `tests/shell-boundary.test.js` (static) |
 | CP-16 | Malformed `history.jsonl` lines cannot crash the visual history | A hand-edited/corrupt log must degrade to a safe subset | `tests/history-core.test.js`, `tests/store-node.test.js` |
 | CP-17 | `import` reads the clipboard but never writes it or calls the model | Import-without-processing must stay inside the Nexus boundary | `tests/shell-boundary.test.js` (static) |
+| CP-18 | Audited import requires one magic number and rejects binary/executable markers | Text-only intake must never auto-execute an imported payload | `tests/text-gate.test.js` |
+| CP-19 | Provenance crossing the KV/harness boundary is UUID + hash + counters only | `proibido_vibe_origem->destino`: no prompt/content payload may leak to the harness | `tests/provenance.test.js`, `tests/history-core.test.js` |
+| CP-20 | The opt-in mirror is the only new system export; provenance/status never export | New commands must not silently become clipboard writers | `tests/shell-boundary.test.js` |
 
 ## Enforcement
 

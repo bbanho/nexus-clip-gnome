@@ -61,6 +61,10 @@ Supported `mode` values:
 | `show` | No |
 | `import` | No |
 | `history` | No |
+| `audit-import` | No |
+| `mirror-import` | No |
+| `status` | No |
+| `provenance` | No |
 
 There can be at most 12 entries. Accelerators are canonicalized; duplicate and structurally
 invalid combinations are not registered. Preferences also warns about known GNOME-reserved
@@ -120,13 +124,26 @@ The extension stores:
 |---|---|
 | `stack.json` | Nexus clipboard, newest item first (LIFO). |
 | `fifo.json` | Queued prompts, oldest first (FIFO). |
-| `history.jsonl` | Append-only record of completed inference results. Read newest-first into the visual history (clamped to `history-limit`). |
+| `history.jsonl` | Append-only record of completed inference results and provenance captures. Read newest-first into the visual history (clamped to `history-limit`). |
 
 Both JSON state files have `schemaVersion: 1` and an `items` array. Stack items contain an
 `id`, `text`, timestamp (`ts`), `kind` (`input` or `result`), and optional `parentId` and
 `prompt`. FIFO items contain an `id`, `prompt`, timestamp, and optional `label`. Invalid
 items are discarded or repaired during load; the stack is clamped to its `maxItems` value
 when one is present.
+
+Audited intake accepts exactly one prefix, `NEXUS-TEXT-1\n` (12 bytes). The payload after it
+must be non-empty, ≤ 64 KiB, free of NUL/DEL and control characters, and must not start with
+an executable marker (`#!`, ELF, MZ, `<?php`). `audit-import` strips the marker before
+pushing; `mirror-import` does not require it because it is an explicit two-way copy.
+
+A provenance entry in `history.jsonl` uses `mode: "provenance"` and carries `id` (the item
+being recorded), `origin` (its `parentId`, or its own id for an input), `uuid`, `hash`, and a
+numeric `vector` (`chars`, `lines`, `words`, `headings`, `fences`, `digitRatio`) — no `text`
+or `prompt`. The UUID is a deterministic fingerprint of content + the item's origin prompt +
+the operation, so it is for correlation, not authenticity. Only the
+projection `{ uuid, hash, counts }` may cross the KV/harness boundary; see
+[CONSTRAINTS.md](../CONSTRAINTS.md) B-03.
 
 The data directory is separate from GSettings. Uninstalling the extension does not delete
 either. Back up or remove the directory explicitly if needed. The extension's Preferences

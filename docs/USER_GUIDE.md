@@ -29,8 +29,18 @@ stack/FIFO depth and the next queued step. Then press **one key**:
 | `D` | Drain the whole FIFO, in order, showing `1/15 … 15/15` progress |
 | `Z` | Undo one stack item |
 | `H` | Open the visual history / queue / prompt panel |
+| `A` | Import audited text (requires the `NEXUS-TEXT-1` magic number; Nexus only) |
+| `M` | Import **and mirror** to the desktop clipboard (explicit opt-in) |
+| `S` | Show a quiet overview: stack / queue / history counts and next step |
+| `U` | Record provenance for the top item (UUID + hash + counters, no text) |
 | `1`–`5` | Enqueue one of the first five ready-made prompt templates |
 | `Esc` | Close without doing anything |
+
+`C` and `D` are the "process top" and "process all" operations; the queue is drained in
+FIFO order and the badge shrinks after each step. `A` is the text-only path: copy text that
+starts with a line containing exactly `NEXUS-TEXT-1`, then press `A`. Anything binary,
+executable-looking, empty, or larger than 64 KiB is refused before inference. `M` is the only
+new action that writes the desktop clipboard; use it only when you want both copies.
 
 This is the natural-behavior path: only one global chord is grabbed, so ordinary
 `Super+C`/`Super+V` and typing are untouched. The direct `Alt`+`Super` shortcuts below remain
@@ -79,6 +89,10 @@ Add or remove entries in **Atalhos e prompts**; up to 12 entries can be configur
 | **Importar do sistema (sem processar)** | No | Read the desktop clipboard into the Nexus stack without calling the model. |
 | **Mostrar pilha e fila** | No | Open the visual history on the Pilha tab. |
 | **Abrir histórico visual** | No | Open the visual history on the Histórico tab. |
+| **Importar texto com magic number auditado** | No | Read the desktop clipboard, require `NEXUS-TEXT-1\n`, strip the marker and push the payload to Nexus. Never writes the desktop clipboard. |
+| **Importar e espelhar no clipboard do sistema** | No | Read the desktop clipboard, push to Nexus **and** write the same text back to the desktop clipboard. Explicit opt-in export. |
+| **Visão geral das pilhas** | No | Status chip with stack / queue / history counts and the next queued label. No content in system notifications. |
+| **Gravar UUID e vetor característico** | No | Record a deterministic UUID, content hash and counter vector for the current top. No prompt or text is sent to the KV/harness boundary. |
 
 An action that requires a prompt will not start if its prompt is empty. If an inference is
 already running, another action reports that Nexus is busy instead of starting a second
@@ -149,6 +163,12 @@ Stack, FIFO, and history are saved locally under
 key are held in GNOME Settings (dconf). Imported text, prompts, and model responses are
 sent to the configured endpoint for inference. See [Configuration](CONFIGURATION.md) for
 the file and setting details.
+
+Copy-on-write is ephemeral by default: a clipboard read or an inference step creates a new
+node and never mutates its source; importing or capturing provenance is the explicit opt-in
+that persists a record. A provenance record stores the local origin item id with a UUID,
+a hash and counters — never the source text or prompt. The same rule applies to the main
+harness: only UUIDs, hashes and counters may cross that boundary.
 
 ## Recovering from common issues
 

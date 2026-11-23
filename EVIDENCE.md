@@ -267,3 +267,29 @@ history log records completed inferences regardless of the policy.
 ```
 <PASTE OUTPUT HERE>
 ```
+
+## 13. Audited text, mirror, overview, and provenance (ADR-0013)
+
+Run after a shell restart (see the reload caveat in §12) with a non-empty Nexus stack.
+
+1. Copy plain text **without** the marker, press `Super+;` then `a`. Expect
+   `Importação auditada recusada: sem o magic number NEXUS-TEXT-1` and an unchanged stack.
+2. Copy `NEXUS-TEXT-1` on its own line followed by ordinary text, press `Super+;` then `a`.
+   Expect `Importado (auditado) · pilha n+1`, the marker stripped from the top item, and the
+   **desktop clipboard unchanged** (paste elsewhere to confirm).
+3. Copy a line starting with `#!/bin/sh`, press `Super+;` then `a`. Expect refusal with
+   `marker executável recusado`. Repeat with a >64 KiB payload → `acima do limite de 64 KiB`.
+4. Copy ordinary text, press `Super+;` then `m`. Expect the text on both the Nexus stack and
+   the desktop clipboard (paste elsewhere to confirm). This is the only new export path.
+5. With prompts queued, press `Super+;` then `s`. Expect a chip such as
+   `pilha 4 · fila 2 · histórico 9 · próximo: Resumir …` and **no** system notification when
+   `notify-level=errors`.
+6. Press `Super+;` then `u`. Expect `Proveniência gravada · <uuid> · N chars`. Open the HUD
+   (`h`, Histórico tab) and confirm a `provenance` row whose subtitle is the UUID. Confirm
+   `history.jsonl` has a `mode:"provenance"` record with `uuid`/`hash`/`vector` and **no**
+   `text` or `prompt` field.
+7. Confirm inference/enqueue paths still leave the desktop clipboard untouched (CP-02/CP-03).
+
+```
+<PASTE OUTPUT HERE>
+```
