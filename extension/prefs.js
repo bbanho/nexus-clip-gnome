@@ -16,6 +16,7 @@ import {
 } from './lib/shortcuts.js';
 import { loadShortcuts, saveShortcuts } from './lib/config.js';
 import { PROMPT_TEMPLATES } from './lib/prompts.js';
+import { normalizeCommandAccel } from './lib/command-keys.js';
 import {
     NOTIFY_LEVELS,
     NOTIFY_LEVEL_LABELS,
@@ -180,6 +181,22 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         restoreButton.connect('clicked', () => this._restoreDefaults());
         this._restoreRow.add_suffix(restoreButton);
         this._restoreRow.set_activatable_widget(restoreButton);
+
+        // One Super chord opens the command bar; all actions are then single
+        // keys inside it, so normal Super+letter behavior is left untouched.
+        const commandRow = new Adw.ActionRow({
+            title: 'Tecla de comandos Super',
+            subtitle:
+                'Super+; abre a barra · V/C/X/Q/N/D/Z/H executa · 1–5 enfileira modelos',
+        });
+        const commandButton = new Gtk.Button({
+            label: this._accelLabel(this._settings.get_string('command-accel')),
+            valign: Gtk.Align.CENTER,
+        });
+        this._attachCommandCapture(commandButton);
+        commandRow.add_suffix(commandButton);
+        commandRow.set_activatable_widget(commandButton);
+        this._shortcutGroup.add(commandRow);
 
         this._rebuildShortcutRows();
     }
@@ -415,6 +432,48 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         return Gtk.accelerator_get_label(keyval, mods);
     }
 
+    /** Capture the single leader chord (separate from the per-action list). */
+    _attachCommandCapture(button) {
+        let capturing = false;
+        const controller = new Gtk.EventControllerKey();
+        button.add_controller(controller);
+        const restore = () =>
+            button.set_label(this._accelLabel(this._settings.get_string('command-accel')));
+
+        button.connect('clicked', () => {
+            capturing = true;
+            button.set_label('Pressione a combinação…');
+            button.grab_focus();
+        });
+
+        controller.connect('key-pressed', (_controller, keyval, _keycode, state) => {
+            if (!capturing)
+                return false;
+            if (MODIFIER_KEYS.has(keyval))
+                return true;
+            if (keyval === Gdk.KEY_Escape) {
+                capturing = false;
+                restore();
+                return true;
+            }
+            const mods = state & MOD_MASK;
+            if (!mods) {
+                button.set_label('Use Super, Alt ou Ctrl');
+                return true;
+            }
+            const accel = Gtk.accelerator_name(keyval, mods);
+            const [valid] = Gtk.accelerator_parse(accel);
+            if (!valid) {
+                button.set_label('Combinação inválida');
+                return true;
+            }
+            this._settings.set_string('command-accel', normalizeCommandAccel(accel));
+            capturing = false;
+            restore();
+            return true;
+        });
+    }
+
     _addShortcut() {
         if (this._shortcuts.length >= MAX_SHORTCUTS) {
             this._showWarning(`Limite de ${MAX_SHORTCUTS} atalhos atingido`);
@@ -524,6 +583,14 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         });
         this._settings.bind('status-chip', chipRow, 'active', 0);
         group.add(chipRow);
+
+        const badgeRow = new Adw.SwitchRow({
+            title: 'Distintivo da fila',
+            subtitle:
+                'Mostra a profundidade da fila e o próximo passo enquanto houver trabalho pendente',
+        });
+        this._settings.bind('queue-badge', badgeRow, 'active', 0);
+        group.add(badgeRow);
 
         const secondsRow = new Adw.SpinRow({
             title: 'Duração do estado (segundos)',

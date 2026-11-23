@@ -4,10 +4,15 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 
 import { createActions } from './lib/actions.js';
-import { loadShortcuts, shortcutsSignature } from './lib/config.js';
+import {
+    loadShortcuts,
+    readCommandAccel,
+    shortcutsSignature,
+} from './lib/config.js';
 import { MAX_SHORTCUTS, registrationList } from './lib/shortcuts.js';
 
 const SLOT_PREFIX = 'hotkey-slot-';
+const COMMAND_SLOT = 'hotkey-command';
 
 export default class NexusClipExtension extends Extension {
     enable() {
@@ -21,13 +26,25 @@ export default class NexusClipExtension extends Extension {
             () => this._syncShortcuts(),
             this
         );
+        this._settings.connectObject(
+            'changed::command-accel',
+            () => this._syncCommandBinding(),
+            this
+        );
+        this._settings.connectObject(
+            'changed::queue-badge',
+            () => this._actions?.refreshQueueBadge(),
+            this
+        );
 
         this._syncShortcuts();
+        this._syncCommandBinding();
     }
 
     disable() {
         this._settings?.disconnectObject(this);
         this._removeBindings();
+        this._removeCommandBinding();
         this._actions?.destroy();
         this._actions = null;
         this._settings = null;
@@ -59,6 +76,40 @@ export default class NexusClipExtension extends Extension {
             }
         }
         this._activeSlots = [];
+    }
+
+    // One global leader instead of one chord per action: the command bar it
+    // opens dispatches single keys internally, so no app-level Super+letter is
+    // stolen and the system clipboard keeps its natural GNOME behavior.
+    _syncCommandBinding() {
+        if (!this._settings)
+            return;
+        const accel = readCommandAccel(this._settings);
+        this._removeCommandBinding();
+        this._settings.set_strv(COMMAND_SLOT, [accel]);
+        try {
+            Main.wm.addKeybinding(
+                COMMAND_SLOT,
+                this._settings,
+                Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+                Shell.ActionMode.NORMAL |
+                    Shell.ActionMode.OVERVIEW |
+                    Shell.ActionMode.POPUP,
+                () => this._actions?.openCommandBar()
+            );
+        } catch (error) {
+            logError(error, `nexus-clip: addKeybinding(${accel}) — conflito?`);
+            Main.notify('Nexus Clip', `Não foi possível registrar ${accel} (conflito?)`);
+        }
+    }
+
+    _removeCommandBinding() {
+        try {
+            Main.wm.removeKeybinding(COMMAND_SLOT);
+        } catch (error) {
+            logError(error, `nexus-clip: removeKeybinding(${COMMAND_SLOT})`);
+        }
+        this._settings?.set_strv(COMMAND_SLOT, []);
     }
 
     _addBindings(shortcuts) {

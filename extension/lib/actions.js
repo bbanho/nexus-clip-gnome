@@ -8,8 +8,16 @@ import {
     createLivePanel,
     createStatusChip,
     closeAllOverlays,
+    getQueueBadge,
+    showCommandBar,
     showStackView,
 } from './hud.js';
+import {
+    COMMAND_KEYS,
+    formatQueueBadge,
+    shortcutForCommand,
+    templateCommands,
+} from './command-keys.js';
 import { needsPrompt, parseShortcuts } from './shortcuts.js';
 import { PROMPT_TEMPLATES } from './prompts.js';
 import { formatStatus, shouldNotify } from './notify-policy.js';
@@ -89,6 +97,37 @@ export function createActions({ settings }) {
     let activeCancellable = null;
     let livePanel = null;
     let lastStatus = '';
+    let commandBar = null;
+    let queueBadge = null;
+
+    // The FIFO is a first-class, always-visible object: the badge appears as
+    // soon as work is queued and updates after every state change, so a
+    // backlog of 15 steps is felt instead of discovered by accident.
+    function syncQueueBadge({ running = false } = {}) {
+        const ui = readUiConfig(settings);
+        if (!ui.queueBadge) {
+            queueBadge?.close();
+            queueBadge = null;
+            return;
+        }
+        if (!queueBadge)
+            queueBadge = getQueueBadge();
+        try {
+            const stack = store.loadStack();
+            const fifo = store.loadFifo();
+            queueBadge.update({
+                text: formatQueueBadge({
+                    stackCount: stack.items.length,
+                    fifoCount: fifo.items.length,
+                    next: fifo.items[0]?.label || fifo.items[0]?.prompt || '',
+                    running,
+                }),
+            });
+        } catch (error) {
+            // A malformed persisted FIFO must never take down the shell.
+            queueBadge.update({ text: '' });
+        }
+    }
 
     // Quiet feedback: routine successes go to a transient status chip (and the
     // history log); system notifications fire only per the user's policy
@@ -137,22 +176,26 @@ export function createActions({ settings }) {
             onUseAsInput: text => {
                 const pushed = store.pushNode(store.loadStack(), text, { kind: 'input' });
                 store.saveStack(null, pushed.state);
+                syncQueueBadge();
                 success('Entrada no Nexus', `pilha ${pushed.state.items.length}`);
             },
             onRemove: (tab, id) => {
                 if (tab === 'fifo') {
                     const removed = store.removeNode(store.loadFifo(), id);
                     store.saveFifo(null, removed.state);
+                    syncQueueBadge();
                     success('Passo removido da fila', `${removed.state.items.length} restante(s)`);
                 } else {
                     const removed = store.removeNode(store.loadStack(), id);
                     store.saveStack(null, removed.state);
+                    syncQueueBadge();
                     success('Item removido do Nexus', `pilha ${removed.state.items.length}`);
                 }
             },
             onEnqueue: (prompt, label) => {
                 const next = store.enqueue(store.loadFifo(), prompt, { label });
                 store.saveFifo(null, next);
+                syncQueueBadge();
                 success('Prompt enfileirado', `fila ${next.items.length}`);
             },
         });
@@ -257,6 +300,7 @@ export function createActions({ settings }) {
             mode: shortcut.mode,
             label: shortcut.label,
         });
+        syncQueueBadge();
         success(shortcut.label, `pilha ${saved.state.items.length}`);
     }
 
@@ -298,6 +342,7 @@ export function createActions({ settings }) {
             mode: shortcut.mode,
             label: shortcut.label,
         });
+        syncQueueBadge();
         success(shortcut.label, `pilha ${saved.state.items.length}`);
     }
 
@@ -308,6 +353,7 @@ export function createActions({ settings }) {
         const fifo = store.loadFifo();
         const next = store.enqueue(fifo, prompt, { label: shortcut.label });
         store.saveFifo(null, next);
+        syncQueueBadge();
         success('Prompt enfileirado', `${shortcut.label} · fila ${next.items.length}`);
     }
 
@@ -344,6 +390,7 @@ export function createActions({ settings }) {
         store.saveStack(null, saved.state);
         // Consume only after success: a failed step can be retried.
         store.saveFifo(null, dequeued.state);
+        syncQueueBadge();
         store.appendHistory(null, {
             id: saved.node.id,
             parentId: top.id,
@@ -357,7 +404,7 @@ export function createActions({ settings }) {
         if (dequeued.state.items.length === 0)
             success('Fila concluída', 'resultado no topo do Nexus');
         else
-            success('Passo ok', `próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
+            success('Passo ok', `fila ${dequeued.state.items.length} · próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
     }
 
     async function doDrain() {
@@ -408,6 +455,7 @@ export function createActions({ settings }) {
 
             store.saveStack(null, state);
             store.saveFifo(null, fifo);
+            syncQueueBadge({ running: true });
             store.appendHistory(null, {
                 id: saved.node.id,
                 parentId: saved.node.parentId,
@@ -430,6 +478,7 @@ export function createActions({ settings }) {
             return;
         }
         store.saveStack(null, popped.state);
+        syncQueueBadge();
         const top = store.peek(popped.state);
         if (top)
             success('Desfazer', preview(top.text));
@@ -455,6 +504,7 @@ export function createActions({ settings }) {
         }
         const pushed = store.pushNode(store.loadStack(), clipboard.trim(), { kind: 'input' });
         store.saveStack(null, pushed.state);
+        syncQueueBadge();
         success('Importado para o Nexus', `pilha ${pushed.state.items.length}`);
     }
 
@@ -482,12 +532,8 @@ export function createActions({ settings }) {
         }
     }
 
-    function runById(id) {
-        if (destroyed)
-            return;
-
-        const shortcut = findShortcut(id);
-        if (!shortcut)
+    function runShortcut(shortcut) {
+        if (destroyed || !shortcut)
             return;
 
         if (shortcut.mode === 'show') {
@@ -509,6 +555,7 @@ export function createActions({ settings }) {
         }
 
         busy = true;
+        syncQueueBadge({ running: true });
         Promise.resolve()
             .then(() => execute(shortcut))
             .catch(error => fail(friendlyError(error)))
@@ -519,7 +566,62 @@ export function createActions({ settings }) {
                     livePanel.close();
                     livePanel = null;
                 }
+                syncQueueBadge();
             });
+    }
+
+    function runById(id) {
+        if (destroyed)
+            return;
+        const shortcut = findShortcut(id);
+        if (shortcut)
+            runShortcut(shortcut);
+    }
+
+    /**
+     * Single-key dispatch behind the Super leader. Configured shortcuts win;
+     * unconfigured modes get a safe synthetic entry so the palette always works
+     * out of the box (no extra global key grabs).
+     */
+    function openCommandBar() {
+        if (destroyed)
+            return;
+        if (commandBar) {
+            commandBar.close();
+            commandBar = null;
+        }
+
+        const configured = parseShortcuts(settings.get_string('shortcuts'));
+        const commands = COMMAND_KEYS.map(command => ({
+            ...command,
+            shortcut: configured.find(item => item.mode === command.mode)
+                ?? shortcutForCommand(command),
+        }));
+
+        commandBar = showCommandBar({
+            stack: store.loadStack(),
+            fifo: store.loadFifo(),
+            commands,
+            templates: templateCommands(),
+            onCommand: command => {
+                commandBar?.close();
+                commandBar = null;
+                runShortcut(command.shortcut);
+            },
+            onTemplate: template => {
+                commandBar?.close();
+                commandBar = null;
+                const next = store.enqueue(store.loadFifo(), template.prompt, {
+                    label: template.label,
+                });
+                store.saveFifo(null, next);
+                syncQueueBadge();
+                success('Prompt enfileirado', `${template.label} · fila ${next.items.length}`);
+            },
+            onClose: () => {
+                commandBar = null;
+            },
+        });
     }
 
     function destroy() {
@@ -537,8 +639,24 @@ export function createActions({ settings }) {
             livePanel.close();
             livePanel = null;
         }
+        if (commandBar) {
+            commandBar.close();
+            commandBar = null;
+        }
+        if (queueBadge) {
+            queueBadge.close();
+            queueBadge = null;
+        }
         closeAllOverlays();
     }
 
-    return { runById, destroy };
+    syncQueueBadge();
+
+    return {
+        runById,
+        runShortcut,
+        openCommandBar,
+        refreshQueueBadge: syncQueueBadge,
+        destroy,
+    };
 }

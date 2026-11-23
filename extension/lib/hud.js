@@ -19,6 +19,11 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import { filterHistory } from './history-core.js';
 import { searchTemplates } from './prompts.js';
+import {
+    commandForChar,
+    formatCommandHeader,
+    formatQueueBadge,
+} from './command-keys.js';
 
 const openOverlays = new Set();
 
@@ -637,4 +642,202 @@ export function createLivePanel({ title = 'Nexus Clip' } = {}) {
             panel.destroy();
         },
     };
+}
+
+let queueBadge = null;
+
+/**
+ * Always-on (non-interactive) FIFO badge. It is visible only while there is
+ * queued work: a backlog of 15 prompts is impossible to miss, and disappears
+ * when the queue drains. Never grabs focus and never touches the clipboard.
+ */
+export function getQueueBadge() {
+    if (queueBadge)
+        return queueBadge;
+
+    const monitor = primaryMonitor();
+    if (!monitor)
+        return { update() {}, close() {} };
+
+    const width = Math.min(620, Math.max(280, Math.floor(monitor.width * 0.4)));
+    const badge = new St.BoxLayout({
+        vertical: false,
+        reactive: false,
+        can_focus: false,
+        visible: false,
+        style:
+            'background-color: rgba(36, 24, 56, 0.95); ' +
+            'border: 1px solid #a06bd8; border-radius: 10px; padding: 7px 14px;',
+    });
+    const label = new St.Label({
+        text: '',
+        style: 'color: #f0dcff; font-size: 12px; font-weight: bold;',
+        x_expand: true,
+        line_wrap: true,
+    });
+    badge.add_child(label);
+    badge.set_width(width);
+    // Top-left, below the panel: avoids the GNOME clock/notification area and
+    // the bottom-left status chip.
+    badge.set_position(monitor.x + 24, monitor.y + 42);
+    Main.uiGroup.add_child(badge);
+
+    queueBadge = {
+        update({ text = '' } = {}) {
+            label.set_text(String(text ?? ''));
+            badge.visible = !!label.get_text();
+        },
+        close() {
+            if (queueBadge && queueBadge.close === this)
+                queueBadge = null;
+            badge.destroy();
+        },
+    };
+    return queueBadge;
+}
+
+let commandBar = null;
+
+/**
+ * Keyboard-only command bar opened by the single Super leader key.
+ *
+ * It is an St actor inside the shell (not a GTK window — see ADR-0009). It
+ * shows the live stack/FIFO depth and dispatches one mnemonic key per action,
+ * including 1–5 to enqueue ready-made prompt templates. Pressing a command
+ * closes the bar first, so streaming/live feedback stays visible afterwards.
+ */
+export function showCommandBar({
+    stack,
+    fifo,
+    commands = [],
+    templates = [],
+    onCommand,
+    onTemplate,
+    onClose,
+} = {}) {
+    if (commandBar)
+        commandBar.close();
+
+    const monitor = primaryMonitor();
+    if (!monitor)
+        return { close() {} };
+
+    const overlay = new St.Widget({
+        reactive: true,
+        can_focus: true,
+        visible: true,
+        layout_manager: new Clutter.BinLayout(),
+        style: 'background-color: rgba(0, 0, 0, 0.55);',
+    });
+    overlay.set_position(monitor.x, monitor.y);
+    overlay.set_size(monitor.width, monitor.height);
+    Main.uiGroup.add_child(overlay);
+    openOverlays.add(overlay);
+
+    const width = Math.min(600, Math.max(360, Math.floor(monitor.width * 0.5)));
+    const panel = new St.BoxLayout({
+        vertical: true,
+        spacing: 8,
+        style:
+            'background-color: #191926; border: 1px solid #a06bd8; ' +
+            'border-radius: 14px; padding: 18px;',
+    });
+    panel.set_size(width, 480);
+    overlay.add_child(new St.Bin({
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+        child: panel,
+    }));
+
+    panel.add_child(new St.Label({
+        text: 'NEXUS · SUPER COMANDOS',
+        style: 'color: #e8d8ff; font-size: 15px; font-weight: bold;',
+    }));
+    const stackCount = stack?.items?.length ?? 0;
+    const fifoCount = fifo?.items?.length ?? 0;
+    panel.add_child(new St.Label({
+        text: formatCommandHeader({ stackCount, fifoCount }),
+        style: 'color: #f0c8ff; font-size: 12px;',
+    }));
+    const next = fifo?.items?.[0];
+    panel.add_child(new St.Label({
+        text: next
+            ? `PRÓXIMO: ${preview(next.label || next.prompt, 68)}`
+            : 'FILA VAZIA · 1–5 enfileira um modelo de prompt',
+        style: DIM_STYLE,
+        line_wrap: true,
+    }));
+
+    const scroll = new St.ScrollView({
+        hscrollbar_policy: St.PolicyType.NEVER,
+        vscrollbar_policy: St.PolicyType.AUTOMATIC,
+        x_expand: true,
+        y_expand: true,
+    });
+    panel.add_child(scroll);
+    const list = new St.BoxLayout({ vertical: true, spacing: 3 });
+    scroll.set_child(list);
+
+    function addRow(key, text, dim = false) {
+        const row = new St.BoxLayout({ vertical: false, spacing: 10 });
+        row.add_child(new St.Label({
+            text: key.toUpperCase(),
+            style:
+                'color: #c89bff; font-family: monospace; font-size: 13px; ' +
+                'font-weight: bold; min-width: 28px;',
+        }));
+        row.add_child(new St.Label({
+            text,
+            style: dim
+                ? DIM_STYLE
+                : 'color: #dfe4f2; font-size: 12px;',
+            x_expand: true,
+            line_wrap: true,
+        }));
+        list.add_child(row);
+    }
+
+    for (const command of commands)
+        addRow(command.key, command.label);
+    for (const template of templates)
+        addRow(template.key, `Enfileirar: ${template.label}`, true);
+
+    panel.add_child(new St.Label({
+        text: 'Esc fecha · V/C/X/Q/N/D/Z/H executa · 1–5 enfileira',
+        style: DIM_STYLE,
+    }));
+
+    let closed = false;
+    const close = () => {
+        if (closed)
+            return;
+        closed = true;
+        closeOverlay(overlay, onClose);
+        if (commandBar && commandBar.close === close)
+            commandBar = null;
+    };
+
+    overlay.connect('key-press-event', (_actor, event) => {
+        const symbol = event.get_key_symbol();
+        if (symbol === Clutter.KEY_Escape) {
+            close();
+            return Clutter.EVENT_STOP;
+        }
+        const char = String.fromCharCode(symbol);
+        if (!/^[a-zA-Z0-9]$/.test(char))
+            return Clutter.EVENT_PROPAGATE;
+        const match = commandForChar(char);
+        if (!match)
+            return Clutter.EVENT_STOP;
+        close();
+        if (match.type === 'command')
+            onCommand?.(match.item);
+        else
+            onTemplate?.(match.item);
+        return Clutter.EVENT_STOP;
+    });
+
+    global.stage.set_key_focus(overlay);
+    commandBar = { close };
+    return commandBar;
 }
