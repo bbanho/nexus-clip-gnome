@@ -89,6 +89,7 @@ test('inference paths never write the system clipboard', () => {
         'doRunNext',
         'doDrain',
         'doPop',
+        'doImport',
     ]) {
         assert.doesNotMatch(
             functionBody(source, name),
@@ -106,11 +107,12 @@ test('copy-top is the only action-level clipboard export', () => {
     assert.equal((source.match(/writeClipboard\s*\(/g) ?? []).length, 2);
 });
 
-test('only the HUD viewer exports an item; the live panel does not', () => {
+test('only the HUD viewer exports an item; the live panel and status chip do not', () => {
     const hud = read('extension/lib/hud.js');
     assert.match(
         functionBody(hud, 'showStackView'),
         /St\.Clipboard[\s\S]*\.set_text\s*\(/
     );
     assert.doesNotMatch(functionBody(hud, 'createLivePanel'), /St\.Clipboard/);
+    assert.doesNotMatch(functionBody(hud, 'createStatusChip'), /St\.Clipboard/);
 });

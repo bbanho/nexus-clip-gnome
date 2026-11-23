@@ -35,17 +35,21 @@ test('schema exposes the shortcut model and API keys', () => {
         'request-timeout',
         'presets',
         'stream',
+        'notify-level',
+        'status-chip',
+        'status-seconds',
+        'history-limit',
     ]) {
         assert.match(schema, new RegExp(`name="${key}"`), `missing key ${key}`);
     }
 });
 
-test('metadata targets GNOME 45-50 and the current schema', () => {
+test('metadata targets GNOME 45-51 and the current schema', () => {
     assert.equal(metadata.uuid, 'nexus-clip@bbanho');
     assert.equal(metadata['settings-schema'], 'org.gnome.shell.extensions.nexus-clip');
     assert.equal(metadata.version, 2);
 
-    for (const version of ['45', '46', '47', '48', '49', '50'])
+    for (const version of ['45', '46', '47', '48', '49', '50', '51'])
         assert.ok(
             metadata['shell-version'].includes(version),
             `missing shell-version ${version}`

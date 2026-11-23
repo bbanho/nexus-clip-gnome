@@ -7,6 +7,7 @@ import {
     defaultShortcuts,
     isValidAccel,
     migrateFromPresets,
+    needsPrompt,
     parseShortcuts,
     registrationList,
     validateShortcuts,
@@ -123,18 +124,32 @@ test('copy-top does not require a prompt', () => {
     assert.equal(errors.length, 0);
 });
 
-test('defaultShortcuts binds the two agreed actions and leaves export unbound', () => {
+test('defaultShortcuts binds the five core actions and leaves the rest unbound', () => {
     const list = defaultShortcuts();
-    assert.equal(registrationList(list).length, 2);
     assert.deepEqual(
         registrationList(list).map(item => [item.mode, item.accel]),
         [
             ['push-process', '<Alt><Super>v'],
             ['process', '<Alt><Super>c'],
+            ['copy-top', '<Alt><Super>x'],
+            ['history', '<Alt><Super>h'],
+            ['pop', '<Alt><Super>z'],
         ]
     );
-    assert.equal(list[2].mode, 'copy-top');
-    assert.equal(list[2].accel, '');
+    // import / enqueue / run-next / drain are available but unbound.
+    const unbound = list.filter(item => !item.accel).map(item => item.mode);
+    assert.deepEqual(unbound, ['import', 'enqueue', 'run-next', 'drain']);
+    assert.ok(list.length <= MAX_SHORTCUTS);
+});
+
+test('import and history modes do not require a prompt', () => {
+    assert.equal(needsPrompt('import'), false);
+    assert.equal(needsPrompt('history'), false);
+    const { errors } = validateShortcuts([
+        { id: 'a', accel: '<Alt><Super>i', mode: 'import', prompt: '' },
+        { id: 'b', accel: '<Alt><Super>h', mode: 'history', prompt: '' },
+    ]);
+    assert.equal(errors.length, 0);
 });
 
 test('migrateFromPresets reuses the first preset and keeps the rest unbound', () => {

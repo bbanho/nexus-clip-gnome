@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
     loadShortcuts,
     readApiConfig,
+    readUiConfig,
     shortcutsSignature,
 } from '../extension/lib/config.js';
 
@@ -91,5 +92,20 @@ test('readApiConfig reads endpoint/model/key/stream/timeout', () => {
         apiKey: 'random',
         streaming: true,
         timeoutSeconds: 42,
+    });
+});
+
+test('readUiConfig reads the feedback policy and history limit', () => {
+    const settings = fakeSettings({
+        'notify-level': 'all',
+        'status-chip': true,
+        'status-seconds': 6,
+        'history-limit': 50,
+    });
+    assert.deepEqual(readUiConfig(settings), {
+        notifyLevel: 'all',
+        statusChip: true,
+        statusSeconds: 6,
+        historyLimit: 50,
     });
 });
