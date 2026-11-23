@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {
     loadShortcuts,
     readApiConfig,
+    readCommandAccel,
     readUiConfig,
+    saveCommandAccel,
     shortcutsSignature,
 } from '../extension/lib/config.js';
 
@@ -101,11 +103,22 @@ test('readUiConfig reads the feedback policy and history limit', () => {
         'status-chip': true,
         'status-seconds': 6,
         'history-limit': 50,
+        'queue-badge': false,
     });
     assert.deepEqual(readUiConfig(settings), {
         notifyLevel: 'all',
         statusChip: true,
         statusSeconds: 6,
         historyLimit: 50,
+        queueBadge: false,
     });
+});
+
+test('command leader is normalized on read and on write', () => {
+    const settings = fakeSettings({ 'command-accel': '' });
+    assert.equal(readCommandAccel(settings), '<Super>semicolon');
+
+    saveCommandAccel(settings, 'v');
+    assert.equal(settings.data['command-accel'], '<Super>semicolon');
+    assert.equal(readCommandAccel(settings), '<Super>semicolon');
 });
