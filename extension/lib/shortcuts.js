@@ -17,6 +17,10 @@ export const MODES = [
     'show',
     'import',
     'history',
+    'audit-import',
+    'mirror-import',
+    'status',
+    'provenance',
 ];
 
 export const MODE_LABELS = {
@@ -30,6 +34,10 @@ export const MODE_LABELS = {
     'show': 'Mostrar pilha e fila',
     'import': 'Importar do sistema (sem processar)',
     'history': 'Abrir histórico visual',
+    'audit-import': 'Importar texto com magic number auditado',
+    'mirror-import': 'Importar e espelhar no clipboard do sistema',
+    'status': 'Visão geral das pilhas',
+    'provenance': 'Gravar UUID e vetor característico',
 };
 
 const MODE_SET = new Set(MODES);

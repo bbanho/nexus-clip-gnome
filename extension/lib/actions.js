@@ -21,6 +21,12 @@ import {
 import { needsPrompt, parseShortcuts } from './shortcuts.js';
 import { PROMPT_TEMPLATES } from './prompts.js';
 import { formatStatus, shouldNotify } from './notify-policy.js';
+import { auditText } from './text-gate.js';
+import {
+    assertNoVibeFlow,
+    captureProvenance,
+    kvProjection,
+} from './provenance.js';
 import { buildMessages } from './v1core.js';
 import { chat, stream } from './v1client.js';
 import * as store from './store.js';
@@ -508,6 +514,101 @@ export function createActions({ settings }) {
         success('Importado para o Nexus', `pilha ${pushed.state.items.length}`);
     }
 
+    /** Only text carrying the single magic number may enter the audited path. */
+    async function doAuditImport() {
+        const clipboard = await readClipboard();
+        if (!clipboard) {
+            fail('Clipboard do sistema vazio');
+            return;
+        }
+
+        const audit = auditText(clipboard);
+        if (!audit.ok) {
+            const reasons = {
+                'missing-magic': 'sem o magic number NEXUS-TEXT-1',
+                'empty': 'conteúdo vazio após o magic number',
+                'too-large': 'acima do limite de 64 KiB',
+                'binary': 'binário ou marcador de executável',
+                'executable-marker': 'marker executável recusado',
+                'control-character': 'caractere de controle recusado',
+            };
+            fail(`Importação auditada recusada: ${reasons[audit.reason] ?? audit.reason}`);
+            return;
+        }
+
+        const pushed = store.pushNode(store.loadStack(), audit.text, { kind: 'input' });
+        store.saveStack(null, pushed.state);
+        syncQueueBadge();
+        success('Importado (auditado)', `pilha ${pushed.state.items.length}`);
+    }
+
+    /**
+     * OPT-IN mirror: the user explicitly asked for "copia seleção para sistema
+     * + copia para". This is the only new path that writes the system clipboard.
+     */
+    async function doMirrorImport() {
+        const clipboard = await readClipboard();
+        if (!clipboard || !clipboard.trim()) {
+            fail('Clipboard do sistema vazio');
+            return;
+        }
+
+        const text = clipboard.trim();
+        const pushed = store.pushNode(store.loadStack(), text, { kind: 'input' });
+        store.saveStack(null, pushed.state);
+        writeClipboard(text);
+        syncQueueBadge();
+        success('Espelhado no sistema', `pilha ${pushed.state.items.length}`);
+    }
+
+    function doStatus() {
+        const stack = store.loadStack();
+        const fifo = store.loadFifo();
+        const history = store.loadHistory(null, {
+            limit: readUiConfig(settings).historyLimit,
+        });
+        const next = fifo.items[0]?.label || fifo.items[0]?.prompt || '—';
+        success(
+            'Visão geral',
+            `pilha ${stack.items.length} · fila ${fifo.items.length} · ` +
+            `histórico ${history.length} · próximo: ${preview(next, 32)}`
+        );
+    }
+
+    /** CP-04: only UUID/hash/counters leave this function; never source text. */
+    function doProvenance(shortcut) {
+        const top = store.peek(store.loadStack());
+        if (!top) {
+            fail('Pilha do Nexus vazia');
+            return;
+        }
+
+        // The command-bar key has no prompt of its own: bind the UUID to the
+        // prompt that produced the item we are recording (local metadata only).
+        const prompt = String(top.prompt ?? shortcut?.prompt ?? '');
+        const provenance = captureProvenance({
+            text: top.text,
+            prompt,
+            mode: 'provenance',
+        });
+        const projection = kvProjection(provenance);
+        assertNoVibeFlow(projection);
+
+        store.appendHistory(null, {
+            id: top.id,
+            ts: Date.now(),
+            mode: 'provenance',
+            origin: top.parentId ?? top.id,
+            uuid: projection.uuid,
+            hash: projection.hash,
+            vector: projection.counts,
+        });
+        success(
+            'Proveniência gravada',
+            `${projection.uuid} · ${projection.counts.chars} chars`
+        );
+    }
+
     async function execute(shortcut) {
         switch (shortcut.mode) {
         case 'push-process':
@@ -526,6 +627,14 @@ export function createActions({ settings }) {
             return await doDrain();
         case 'pop':
             return doPop();
+        case 'audit-import':
+            return await doAuditImport();
+        case 'mirror-import':
+            return await doMirrorImport();
+        case 'status':
+            return doStatus();
+        case 'provenance':
+            return doProvenance(shortcut);
         default:
             fail(`Ação desconhecida: ${shortcut.mode}`);
             return undefined;

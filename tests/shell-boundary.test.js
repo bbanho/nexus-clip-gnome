@@ -69,6 +69,38 @@ test('shell-process modules do not import GTK, Adw, or Node builtins', () => {
     }
 });
 
+test('execute dispatches the audited, mirror, status and provenance modes', () => {
+    const body = functionBody(read('extension/lib/actions.js'), 'execute');
+    for (const mode of ['audit-import', 'mirror-import', 'status', 'provenance'])
+        assert.match(body, new RegExp(`case ['"]${mode}['"]`), `missing dispatch for ${mode}`);
+});
+
+test('audited import goes through the single-magic-number gate', () => {
+    const source = read('extension/lib/actions.js');
+    assert.match(source, /auditText\s*\(/);
+    const body = functionBody(source, 'doAuditImport');
+    assert.match(body, /auditText\s*\(/);
+    assert.doesNotMatch(body, /writeClipboard\s*\(/);
+});
+
+test('mirror import is the only new explicit system-clipboard export', () => {
+    const source = read('extension/lib/actions.js');
+    assert.match(functionBody(source, 'doMirrorImport'), /writeClipboard\s*\(/);
+});
+
+test('provenance never emits free text to the KV/harness boundary', () => {
+    const body = functionBody(read('extension/lib/actions.js'), 'doProvenance');
+    assert.match(body, /kvProjection\s*\(/);
+    assert.doesNotMatch(body, /nexus_address|nexus_signal|writeClipboard/);
+});
+
+test('provenance binds the origin prompt and records the local origin item', () => {
+    const body = functionBody(read('extension/lib/actions.js'), 'doProvenance');
+    assert.match(body, /top\.prompt/);
+    assert.match(body, /top\.parentId/);
+    assert.match(body, /origin:/);
+});
+
 test('prefs is the only GTK/Adw consumer', () => {
     const prefs = read('extension/prefs.js');
     assert.match(prefs, /gi:\/\/Gtk/);
@@ -90,6 +122,9 @@ test('inference paths never write the system clipboard', () => {
         'doDrain',
         'doPop',
         'doImport',
+        'doAuditImport',
+        'doStatus',
+        'doProvenance',
     ]) {
         assert.doesNotMatch(
             functionBody(source, name),
@@ -99,12 +134,13 @@ test('inference paths never write the system clipboard', () => {
     }
 });
 
-test('copy-top is the only action-level clipboard export', () => {
+test('only explicit copy-top and mirror-import export to the system clipboard', () => {
     const source = read('extension/lib/actions.js');
     assert.match(functionBody(source, 'doCopyTop'), /writeClipboard\s*\(/);
+    assert.match(functionBody(source, 'doMirrorImport'), /writeClipboard\s*\(/);
 
-    // One definition + one call site in doCopyTop.
-    assert.equal((source.match(/writeClipboard\s*\(/g) ?? []).length, 2);
+    // One definition + one call site in each explicit export action.
+    assert.equal((source.match(/writeClipboard\s*\(/g) ?? []).length, 3);
 });
 
 test('only the HUD viewer exports an item; the live panel and status chip do not', () => {

@@ -20,7 +20,7 @@ test('command leader is a single Super chord with a real key', () => {
 test('command keys cover every action with a unique mnemonic', () => {
     assert.deepEqual(
         COMMAND_KEYS.map(item => item.key),
-        ['v', 'c', 'x', 'q', 'n', 'd', 'z', 'h']
+        ['v', 'c', 'x', 'q', 'n', 'd', 'z', 'h', 'a', 'm', 's', 'u']
     );
     assert.equal(new Set(COMMAND_KEYS.map(item => item.mode)).size, COMMAND_KEYS.length);
     assert.equal(new Set(COMMAND_KEYS.map(item => item.key)).size, COMMAND_KEYS.length);
@@ -40,6 +40,17 @@ test('commandForChar resolves actions and template digits', () => {
     assert.equal(commandForChar('3').item.prompt, templateCommands()[2].prompt);
     assert.equal(commandForChar('9'), null);
     assert.equal(commandForChar(''), null);
+});
+
+test('commandForChar resolves the audited import, mirror, status and provenance keys', () => {
+    assert.equal(commandForChar('A').item.mode, 'audit-import');
+    assert.equal(commandForChar('m').item.mode, 'mirror-import');
+    assert.equal(commandForChar('s').item.mode, 'status');
+    assert.equal(commandForChar('u').item.mode, 'provenance');
+
+    const mnemonics = new Set(COMMAND_KEYS.map(item => item.key));
+    for (const key of ['1', '2', '3', '4', '5'])
+        assert.equal(mnemonics.has(key), false, `${key} belongs to templates only`);
 });
 
 test('template commands are limited to keys 1-5', () => {

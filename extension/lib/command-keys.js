@@ -60,6 +60,30 @@ export const COMMAND_KEYS = [
         label: 'Histórico visual (pilha / fila / prompts)',
         hint: 'painel pesquisável',
     },
+    {
+        key: 'a',
+        mode: 'audit-import',
+        label: 'Importar texto auditado',
+        hint: 'exige o magic number NEXUS-TEXT-1',
+    },
+    {
+        key: 'm',
+        mode: 'mirror-import',
+        label: 'Importar + espelhar no sistema',
+        hint: 'exportação explícita (CP-03)',
+    },
+    {
+        key: 's',
+        mode: 'status',
+        label: 'Visão geral pilha / fila / histórico',
+        hint: 'contagens, sem conteúdo',
+    },
+    {
+        key: 'u',
+        mode: 'provenance',
+        label: 'Gravar UUID + vetor característico',
+        hint: 'sem texto no KV (CP-04)',
+    },
 ];
 
 const TEMPLATE_KEYS = ['1', '2', '3', '4', '5'];

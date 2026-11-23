@@ -67,6 +67,37 @@ test('filterHistory matches all words across text/prompt/label/mode', () => {
     assert.deepEqual(filterHistory(entries, 'zzz'), []);
 });
 
+test('parseHistory keeps provenance-only entries without text or prompt', () => {
+    const line = JSON.stringify({
+        id: 'item_1',
+        ts: 123,
+        mode: 'provenance',
+        uuid: 'aaaaaaaa-bbbb-8ccc-8ddd-eeeeeeeeeeee',
+        hash: '0123456789abcdef',
+        vector: { chars: 4, lines: 1 },
+    });
+    const entries = parseHistory(line + '\n');
+
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].uuid, 'aaaaaaaa-bbbb-8ccc-8ddd-eeeeeeeeeeee');
+    assert.equal(entries[0].hash, '0123456789abcdef');
+    assert.equal(entries[0].vector.chars, 4);
+    assert.match(filterHistory(entries, 'provenance').map(e => e.id).join(), /item_1/);
+    assert.equal(entries[0].origin, undefined);
+});
+
+test('parseHistory preserves a string origin on provenance entries only', () => {
+    const line = [
+        JSON.stringify({ id: 'a', ts: 1, uuid: 'u1', origin: 'item_pai' }),
+        JSON.stringify({ id: 'b', ts: 2, uuid: 'u2', origin: { bad: true } }),
+    ].join('\n');
+    const entries = parseHistory(line);
+
+    // parseHistory is newest-first, so 'b' is index 0.
+    assert.equal(entries.find(e => e.id === 'a').origin, 'item_pai');
+    assert.equal(entries.find(e => e.id === 'b').origin, undefined);
+});
+
 test('DEFAULT_HISTORY_LIMIT is a sane positive number', () => {
     assert.ok(Number.isFinite(DEFAULT_HISTORY_LIMIT) && DEFAULT_HISTORY_LIMIT > 0);
 });

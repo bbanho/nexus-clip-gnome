@@ -309,10 +309,13 @@ export function showStackView({
         } else if (tab === 'history') {
             filterHistory(data.history, query).forEach(entry => {
                 const name = entry.label || entry.mode || 'inferência';
+                const body = entry.text ?? entry.prompt ?? entry.uuid ?? '';
                 out.push({
                     head: `${name} · ${ageLabel(entry.ts)}`,
-                    sub: preview(entry.text ?? entry.prompt ?? '', 220),
-                    payload: { tab: 'history', id: entry.id, text: entry.text ?? '' },
+                    sub: preview(body, 220),
+                    // Explicit export only: a provenance row copies its UUID,
+                    // never the source text (which is not stored there anyway).
+                    payload: { tab: 'history', id: entry.id, text: body },
                 });
             });
         } else if (tab === 'fifo') {
@@ -803,7 +806,7 @@ export function showCommandBar({
         addRow(template.key, `Enfileirar: ${template.label}`, true);
 
     panel.add_child(new St.Label({
-        text: 'Esc fecha · V/C/X/Q/N/D/Z/H executa · 1–5 enfileira',
+        text: 'Esc fecha · V C X Q N D Z H A M S U executa · 1–5 enfileira',
         style: DIM_STYLE,
     }));
 

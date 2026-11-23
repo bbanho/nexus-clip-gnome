@@ -19,7 +19,9 @@ export function normalizeHistoryEntry(raw) {
         return null;
     const text = nonEmptyString(raw.text);
     const prompt = nonEmptyString(raw.prompt);
-    if (!text && !prompt)
+    const hasProvenance = Boolean(nonEmptyString(raw.uuid))
+        || (raw.vector && typeof raw.vector === 'object' && !Array.isArray(raw.vector));
+    if (!text && !prompt && !hasProvenance)
         return null;
 
     const entry = {
@@ -41,6 +43,24 @@ export function normalizeHistoryEntry(raw) {
         entry.mode = mode;
     if (Number.isFinite(raw.step))
         entry.step = raw.step;
+
+    // Provenance-only entries carry an addressable UUID and a counter vector
+    // instead of source text (CP-19). Never preserve free-text fields here.
+    if (hasProvenance) {
+        const uuid = nonEmptyString(raw.uuid)?.trim();
+        const hash = nonEmptyString(raw.hash)?.trim();
+        if (uuid)
+            entry.uuid = uuid;
+        if (hash)
+            entry.hash = hash;
+        if (raw.vector && typeof raw.vector === 'object' && !Array.isArray(raw.vector))
+            entry.vector = Object.fromEntries(
+                Object.entries(raw.vector).filter(([, value]) => Number.isFinite(value))
+            );
+        const origin = nonEmptyString(raw.origin)?.trim();
+        if (origin)
+            entry.origin = origin;
+    }
     return entry;
 }
 
