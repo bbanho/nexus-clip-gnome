@@ -6,6 +6,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Visual history** (`hud.js`): searchable, tabbed panel (Pilha / Histórico / Fila / Prompts)
+  adapting the Clipboard History UX. `Enter` exports to the system clipboard, `Ctrl+Enter`
+  reuses an item as a Nexus input, `Del` removes a stack/queue item, `1`–`4`/`Tab` switch tabs,
+  `/` focuses search. Built only with St/Clutter (no GTK).
+- **Prompt template library** (`lib/prompts.js`): ready-made prompts; one-click *Modelo de
+  prompt* picker per shortcut in Preferences, and a *Prompts* tab in the HUD that enqueues a
+  template into the FIFO.
+- **Quiet feedback** (`lib/notify-policy.js`): `notify-level` setting (`errors` default, `all`,
+  `silent`); routine successes show a transient **status chip** (`createStatusChip`) instead of
+  a system notification. New keys `notify-level`, `status-chip`, `status-seconds`,
+  `history-limit`.
+- New actions/modes: `import` (clipboard → Nexus, no inference) and `history` (open the visual
+  history). `store-core.removeNode` and `store-io.loadHistory` (newest-first, sanitized).
+- Reviewed default shortcuts: `V` import+process, `C` process top, `X` copy-top, `H` history,
+  `Z` undo; `import`/`enqueue`/`run-next`/`drain` as unbound templates. *Restaurar padrões*
+  button in Preferences.
+- Preferences simplification: one-glance shortcut rows (key · action · prompt), a
+  *Notificações e estado* group, and a help section with concrete direct/indirect examples.
+- Tests: `history-core`, `prompts`, `notify-policy`, history/removeNode store tests, and
+  extended shell-boundary/schema/shortcut contracts (CP-15/16/17).
+- ADR-0011 (visual history, prompt templates, quiet feedback).
+- **Structural invariant gate** (`rules/`, `sgconfig.yml`): ast-grep AST-level rules
+  (`no-gtk-in-shell`, `no-node-builtin-in-gjs`, `no-gi-in-pure-modules`,
+  `clipboard-write-outside-boundary`) wired into `make check` and a standalone
+  `make structural` target — verifies CP-01/CP-03 and the pure/impure split without a
+  live shell.
 - `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/TROUBLESHOOTING.md`, `docs/adr/`, `llms.txt`.
 - E2E validation runbook scaffold (`EVIDENCE.md`).
 - User guide (`docs/USER_GUIDE.md`) and settings/data reference (`docs/CONFIGURATION.md`);
@@ -21,6 +47,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reported in prefs instead of failing silently.
 - Malformed `stack.json`/`fifo.json` items are sanitized on load instead of crashing the
   HUD (invalid ids/content dropped, metadata repaired, `maxItems` clamped).
+- Added GNOME Shell 51 to `metadata.json` (`shell-version`), fixing the extension being
+  shown as **OUT OF DATE** after the Shell 50 → 51 upgrade.
 
 ## [0.2.0] - 2026-10-26
 

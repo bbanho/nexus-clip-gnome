@@ -19,13 +19,18 @@ It connects to an OpenAI-compatible chat-completions endpoint.
   in Nexus.
 - **Process the Nexus top** repeatedly to create a traceable chain of results.
 - **Queue prompts** and run one at a time or drain the queue; failed work stays retryable.
+- **Visual history** — a searchable, tabbed panel (Pilha / Histórico / Fila / Prompts) to
+  find, reuse, copy, or delete any item.
+- **Ready-made prompt templates** — fill a shortcut's prompt in one click, or enqueue a
+  template straight from the history panel.
+- **Quiet feedback** — each operation shows a transient status chip; system notifications
+  are reserved for errors by default.
 - **Choose your shortcuts and prompts** in Preferences, with up to 12 shortcut entries.
 - **Use streaming** to watch a response arrive in a non-focusable shell panel.
-- **Inspect and export** items through the stack viewer.
 
 ## Requirements
 
-- GNOME Shell 45–50 (developed and validated on GNOME Shell 50.3 / Wayland).
+- GNOME Shell 45–51 (developed and validated on GNOME Shell 50.3 and 51.1 / Wayland).
 - GJS, `glib-compile-schemas`, and GNOME Shell extension tools.
 - An accessible OpenAI-compatible `/v1/chat/completions` endpoint. The default endpoint
   and model can be changed in Preferences; see [Configuration](docs/CONFIGURATION.md).
@@ -62,17 +67,22 @@ See [Development](docs/DEVELOPMENT.md) for packaging, reinstalling, and reload d
 3. Press **`Alt` + `Super` + `V`** to import that text into Nexus and process it with the
    shortcut's prompt.
 4. Press **`Alt` + `Super` + `C`** to process the current Nexus top again.
-5. To paste a result into another application, explicitly export it with **Copiar topo do
-   Nexus para o sistema**, or open **Mostrar pilha e fila**, select an item, and press
-   **Enter**.
+5. To paste a result into another application, press **`Alt` + `Super` + `X`** to export the
+   Nexus top, or open the visual history with **`Alt` + `Super` + `H`**, select an item, and
+   press **Enter**.
 
 The defaults are:
 
 | Shortcut | Action | Clipboard behavior |
 |---|---|---|
 | `Alt` + `Super` + `V` | **Importar e processar** | Reads desktop clipboard; stores source and result in Nexus; does not write back. |
-| `Alt` + `Super` + `C` | **Processar pilha** | Sends the Nexus top for inference and stores the result in Nexus. |
-| Unbound template | **Copiar topo do Nexus para o sistema** | Explicitly exports the Nexus top to the desktop clipboard. |
+| `Alt` + `Super` + `C` | **Processar topo** | Sends the Nexus top for inference and stores the result in Nexus. |
+| `Alt` + `Super` + `X` | **Copiar topo para o sistema** | Explicitly exports the Nexus top to the desktop clipboard. |
+| `Alt` + `Super` + `H` | **Histórico visual** | Opens the searchable history panel; Enter exports the selected item. |
+| `Alt` + `Super` + `Z` | **Desfazer** | Pops the newest Nexus item; does not touch the desktop clipboard. |
+
+`import`, `enqueue`, `run-next`, and `drain` are available as unbound templates — capture a
+key in Preferences only if you use them.
 
 See the [User Guide](docs/USER_GUIDE.md) for all actions, queue behavior, and shortcuts.
 

@@ -1,6 +1,6 @@
 # Architecture — Nexus Clip GNOME Extension
 
-A GNOME Shell 45–50 extension (ESM / GJS) that gives Nexus its **own clipboard**: a LIFO
+A GNOME Shell 45–51 extension (ESM / GJS) that gives Nexus its **own clipboard**: a LIFO
 stack of inputs/results, a FIFO of prompts, user-defined shortcuts with per-shortcut
 prompts, and inference over an OpenAI-compatible `/v1` endpoint.
 
@@ -16,7 +16,7 @@ never creates GTK widgets (ADR-0009); in-shell UI is built with St/Clutter (ADR-
 
 ## 1. Runtime & constraints
 
-- **GNOME Shell 45–50**, developed/validated on **50.3 Wayland**. ESM is mandatory
+- **GNOME Shell 45–51**, developed/validated on **50.3 and 51.1 Wayland**. ESM is mandatory
   (GNOME 45+); legacy `imports.gi` loading is not used.
 - **GJS** with `gi://Soup?version=3.0` (libsoup3), `gi://St`, `gi://Clutter`, and the
   GNOME Shell resource modules. Prefs use `gi://Gtk?version=4.0` / `gi://Adw?version=1`
@@ -34,7 +34,7 @@ never creates GTK widgets (ADR-0009); in-shell UI is built with St/Clutter (ADR-
 
 ```
 extension/
-├── metadata.json              # uuid nexus-clip@bbanho, schema, shell-version 45..50
+├── metadata.json              # uuid nexus-clip@bbanho, schema, shell-version 45..51
 ├── extension.js               # Extension: enable/disable + dynamic keybinding slots
 ├── prefs.js                   # ExtensionPreferences: API / shortcuts / Nexus / help
 ├── schemas/
@@ -43,12 +43,15 @@ extension/
     ├── actions.js             # orchestration: import/process/export/FIFO/HUD
     ├── config.js              # GSettings glue: shortcut migration/save, API config
     ├── shortcuts.js           # PURE: modes, canonical accelerators, validation, defaults
-    ├── hud.js                 # St/Clutter stack viewer + live streaming panel
+    ├── prompts.js             # PURE: built-in prompt template library + search
+    ├── history-core.js        # PURE: parse/filter history.jsonl (newest-first, sanitized)
+    ├── notify-policy.js       # PURE: notification policy (errors/all/silent) + status format
+    ├── hud.js                 # St/Clutter visual history (tabs) + live panel + status chip
     ├── v1client.js            # HTTP: chat() (non-stream) and stream() (SSE)
     ├── v1core.js              # PURE: buildMessages / buildPayload / parseCompletion
     ├── sse.js                 # PURE: createSseParser + createUtf8Decoder
-    ├── store-core.js          # PURE: LIFO/FIFO semantics, node shape, schemaVersion
-    ├── store-io.js            # serialization over an injected file adapter
+    ├── store-core.js          # PURE: LIFO/FIFO semantics, node shape, removeNode, schemaVersion
+    ├── store-io.js            # serialization over an injected file adapter (+ loadHistory)
     └── store.js               # GJS/Gio adapter (shell + prefs)
 
 tests/
@@ -58,6 +61,11 @@ tests/
 ├── store-node.test.js
 ├── shortcuts.test.js
 ├── config.test.js
+├── prompts.test.js
+├── history-core.test.js
+├── notify-policy.test.js
+├── shell-boundary.test.js
+├── schema.test.js
 ├── v1core.test.js
 ├── sse.test.js
 ├── gjs-store-smoke.mjs
@@ -67,16 +75,19 @@ tests/
 | Module | Responsibility | Testable in Node? |
 |--------|----------------|-------------------|
 | `shortcuts.js` | Shortcut schema, canonicalization, defaults/migration, validation | ✅ pure |
+| `prompts.js` | Built-in prompt template library + search | ✅ pure |
+| `history-core.js` | Parse/filter `history.jsonl` (newest-first, sanitized) | ✅ pure |
+| `notify-policy.js` | Notification policy + status formatting | ✅ pure |
 | `config.js` | GSettings read/write, migration, registration signature | ✅ fake settings |
-| `store-core.js` | LIFO/FIFO semantics, node shape, clamping | ✅ pure |
-| `store-io.js` | JSON/JSONL serialization over injected primitives | ✅ via adapters |
+| `store-core.js` | LIFO/FIFO semantics, node shape, `removeNode`, clamping | ✅ pure |
+| `store-io.js` | JSON/JSONL serialization over injected primitives (+ `loadHistory`) | ✅ via adapters |
 | `store-node.js` (in `tests/helpers/`) | Node filesystem adapter | ✅ |
 | `v1core.js` | Payload/message building + completion parsing | ✅ pure |
 | `sse.js` | SSE framing + incremental UTF-8 decoding | ✅ pure |
 | `store.js` | Gio persistence adapter | ⚠️ GJS smoke |
 | `v1client.js` | Network I/O (libsoup3), cancellable + timeout | ⚠️ GJS smoke |
-| `hud.js` | St/Clutter stack viewer + streaming panel | ⚠️ shell UI |
-| `actions.js` | Orchestration (`St.Clipboard`, notifications, busy guard) | ⚠️ shell only |
+| `hud.js` | St/Clutter visual history (tabs) + streaming panel + status chip | ⚠️ shell UI |
+| `actions.js` | Orchestration (`St.Clipboard`, feedback policy, busy guard) | ⚠️ shell only |
 | `prefs.js` | Preferences UI (GTK/Adw in a separate process) | ⚠️ manual |
 
 **Principle:** all *logic* lives in pure modules tested by `node --test`; GJS/UI modules
@@ -159,11 +170,11 @@ sequenceDiagram
   end
 ```
 
-### 4.3 Export (`copy-top`, unbound by default)
+### 4.3 Export (`copy-top`, `<Alt><Super>x`)
 
 `copy-top` reads the Nexus top and calls `St.Clipboard.set_text()` once. It is the only
-non-HUD action that writes the system clipboard. The stack viewer's `Enter` does the same
-for the selected row. No result is exported implicitly.
+non-HUD action that writes the system clipboard. The visual history's `Enter` (or *Copiar*
+button) does the same for the selected row. No result is exported implicitly.
 
 ### 4.4 FIFO: enqueue / run-next / drain
 
@@ -183,20 +194,29 @@ flowchart LR
   preserves completed steps and the remaining queue.
 - Each step is chained: the result of step *n* is the input of step *n+1*.
 
-### 4.5 Undo (`pop`) and viewer (`show`)
+### 4.5 Undo (`pop`), import (`import`) and visual history (`show` / `history`)
 
 - `pop` removes the newest node. The next node becomes the Nexus clipboard. The system
   clipboard is untouched.
-- `show` opens the St viewer: ↑/↓ (or `j`/`k`) select, `Enter` copies the selected item
-  to the system clipboard, `Esc`/`q` closes. It is read-only with respect to Nexus state.
+- `import` reads the desktop clipboard into the Nexus stack **without** calling the model
+  (and never writes the system clipboard).
+- `show` / `history` open the searchable, tabbed visual history (Pilha / Histórico / Fila /
+  Prompts). `↑`/`↓` (or `j`/`k`) select, `1`–`4`/`Tab` switch tabs, `/` focuses search,
+  `Enter` exports the selected item to the system clipboard, `Ctrl+Enter` reuses it as a
+  Nexus input, `Del` removes a stack/queue item, `Esc`/`q` closes. On the Prompts tab,
+  `Enter` enqueues a template into the FIFO. Mutations go through `refresh()` and the store,
+  so the panel always reflects persisted state.
 
-### 4.6 Busy guard, cancellation, errors
+### 4.6 Busy guard, cancellation, errors, feedback
 
-- Only one action runs at a time. A second keypress while busy notifies "Ocupado".
+- Only one action runs at a time. A second keypress while busy reports "Ocupado".
 - Each inference creates a `Gio.Cancellable`; `disable()` cancels it.
 - `v1client` applies the configured `request-timeout`; clipboard reads have a 3 s guard.
-- Errors are mapped to friendly notifications (gateway offline, 401/403, 404, 5xx,
-  timeout, cancellation) and never escape the shell's key handler.
+- Errors are mapped to friendly messages (gateway offline, 401/403, 404, 5xx, timeout,
+  cancellation) and never escape the shell's key handler.
+- Feedback follows `notify-policy.js`: every operation updates a transient **status chip**
+  (when `status-chip` is on) and the history log; a **system notification** fires only per
+  `notify-level` (`errors` by default, `all`, or `silent`).
 
 ---
 
@@ -244,6 +264,10 @@ One JSON object per line:
 ```json
 { "id": "res_...", "parentId": "item_...", "text": "...", "ts": 0, "prompt": "...", "mode": "process", "label": "..." }
 ```
+
+`store-io.loadHistory` reads the tail (clamped to `history-limit`), parses newest-first and
+sanitizes each line (`history-core.parseHistory`), so a malformed entry degrades safely
+instead of crashing the visual history (CP-16).
 
 ### Tree-readiness (future)
 

@@ -6,7 +6,7 @@
 ## 0. Automated checks
 
 ```bash
-cd /var/home/bruno/repos/nexus-clip-gnome
+cd /var/home/bruno/_dev/repo/nexus-clip-gnome
 make check
 make smoke        # requires the gateway on :8010
 ```
@@ -28,10 +28,30 @@ make smoke:
   stream => "ok" acc="ok"
 ```
 
+### Recorded (2026-11-23)
+
+```
+make check:
+  node --test: 87 pass / 0 fail
+  node --check: OK for extension.js, prefs.js, lib/*.js
+  gjs -m tests/gjs-store-smoke.mjs: GJS store adapter OK
+  glib-compile-schemas --strict: OK
+
+make smoke:
+  chat   => "ok"
+  stream => "ok" acc="ok"
+
+gnome-extensions info nexus-clip@bbanho: State ACTIVE, error '' (first reload)
+```
+
+> Note: on Wayland, after a *second* reinstall in the same session the running shell keeps
+> the previously loaded build until logout/login (`State: INACTIVE`). This is expected shell
+> behavior, not an extension error.
+
 ## 1. Install + enable
 
 ```bash
-cd /var/home/bruno/repos/nexus-clip-gnome
+cd /var/home/bruno/_dev/repo/nexus-clip-gnome
 make install
 # Wayland: log out and back in before enabling
 make enable
@@ -52,9 +72,10 @@ gnome-extensions prefs nexus-clip@bbanho
 gsettings --schemadir extension/schemas list-recursively org.gnome.shell.extensions.nexus-clip
 ```
 
-Expected: the **Atalhos e prompts** group lists three entries — two bound
-(`<Alt><Super>v`, `<Alt><Super>c`) and one unbound export template. `shortcuts` is a JSON
-array; `hotkey-slot-0`/`-1` mirror the two bound accelerators.
+Expected: the **Atalhos e prompts** group lists nine entries — five bound
+(`<Alt><Super>v`, `<Alt><Super>c`, `<Alt><Super>x`, `<Alt><Super>h`, `<Alt><Super>z`) and four
+unbound templates (`import`, `enqueue`, `run-next`, `drain`). `shortcuts` is a JSON array;
+`hotkey-slot-0..4` mirror the five bound accelerators.
 
 ```
 <PASTE OUTPUT HERE>
@@ -97,14 +118,14 @@ the previous top. The stack grows by one per press.
 
 ## 5. Export (explicit only)
 
-1. In prefs, give the **Copiar topo do Nexus para o sistema** template a key.
-2. Press it.
-3. Paste into the scratch editor.
+1. Press **`Alt` + `Super` + `X`** (**Copiar topo do Nexus para o sistema**, bound by default).
+2. Paste into the scratch editor.
 
 Expected: the pasted text is the Nexus top. No inference path wrote the clipboard before
 this explicit export.
 
-Alternative: bind **Mostrar pilha e fila**, open the HUD, select a row, press `Enter`.
+Alternative: press **`Alt` + `Super` + `H`** to open the visual history, select a row, press
+`Enter`.
 
 ```
 <PASTE OUTPUT HERE>
@@ -152,6 +173,64 @@ journalctl --user -b -o cat | grep -iE 'nexus-clip|JS ERROR|Gjs-CRITICAL' | tail
 ```
 
 Expected: no `JS ERROR` / `Gjs-CRITICAL` from the extension.
+
+```
+<PASTE OUTPUT HERE>
+```
+
+## 9. Visual history (search / reuse / delete)
+
+1. Press `<Alt><Super>h` to open the panel on the **Histórico** tab.
+2. Type in the search box (`/` focuses it); confirm the list filters.
+3. Press `1`/`2`/`3`/`4` (or `Tab`) to switch Pilha / Histórico / Fila / Prompts.
+4. Select a stack item, press `Ctrl+Enter` → it is pushed as a new Nexus input.
+5. Select a stack item, press `Del` → it is removed from `stack.json`.
+6. Select any item, press `Enter` → it is copied to the system clipboard (explicit export).
+7. Press `Esc` to close.
+
+```bash
+cat ~/.local/share/nexus-clip-gnome/stack.json
+```
+
+Expected: navigation and search work without freezing the shell; `Ctrl+Enter` adds an
+`input` node; `Del` removes exactly one node; only `Enter` writes the system clipboard.
+
+```
+<PASTE OUTPUT HERE>
+```
+
+## 10. Prompt templates
+
+1. In prefs, expand a shortcut and pick a **Modelo de prompt** → the prompt editor fills.
+2. In the HUD **Prompts** tab, select a template and press `Enter` → it is enqueued.
+
+```bash
+cat ~/.local/share/nexus-clip-gnome/fifo.json
+```
+
+Expected: the chosen template text appears in the shortcut prompt / FIFO. No inference runs
+from merely picking a template.
+
+```
+<PASTE OUTPUT HERE>
+```
+
+## 11. Quiet feedback (status chip + notification policy)
+
+1. With defaults (`notify-level=errors`, `status-chip=true`), run `<Alt><Super>c`.
+   Expect a transient status chip (`✓ …`) and **no** system notification.
+2. Set `notify-level` to `all`; run again → a system notification fires.
+3. Set `notify-level` to `silent`; run again → no notification (chip still shows).
+4. Force an error (stop the gateway) and run `<Alt><Super>c` → an error notification fires
+   under the default `errors` policy.
+
+```bash
+SD=~/.local/share/gnome-shell/extensions/nexus-clip@bbanho/schemas
+gsettings --schemadir "$SD" set org.gnome.shell.extensions.nexus-clip notify-level all
+```
+
+Expected: the chip always names the operation; system notifications follow the policy; the
+history log records completed inferences regardless of the policy.
 
 ```
 <PASTE OUTPUT HERE>

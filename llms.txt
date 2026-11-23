@@ -1,12 +1,15 @@
 # Nexus Clip
-> GNOME Shell 45–50 extension: Nexus has its own clipboard (LIFO stack + FIFO of prompts), user-defined shortcuts with per-shortcut prompts, and inference over an OpenAI-compatible /v1 endpoint. The system clipboard is touched only by explicit import/export.
+> GNOME Shell 45–51 extension: Nexus has its own clipboard (LIFO stack + FIFO of prompts), user-defined shortcuts with per-shortcut prompts, and inference over an OpenAI-compatible /v1 endpoint. The system clipboard is touched only by explicit import/export.
 
 ## Core files
 - extension/extension.js — Extension subclass; dynamic keybinding slots from the `shortcuts` list
 - extension/lib/actions.js — orchestration: import/process/export/enqueue/run-next/drain/pop/HUD
 - extension/lib/shortcuts.js — PURE: modes, canonical accelerators, defaults, migration, validation
 - extension/lib/config.js — GSettings glue: load/save shortcuts, signature, API config
-- extension/lib/hud.js — in-shell St/Clutter stack viewer + live streaming panel (no GTK)
+- extension/lib/hud.js — in-shell St/Clutter visual history (tabs Pilha/Histórico/Fila/Prompts, search) + live streaming panel + transient status chip (no GTK)
+- extension/lib/prompts.js — PURE: built-in prompt template library + search
+- extension/lib/history-core.js — PURE: parse/filter the append-only history.jsonl (newest-first, sanitized)
+- extension/lib/notify-policy.js — PURE: notification policy (errors/all/silent) + status formatting
 - extension/lib/v1client.js — HTTP client: chat() (non-stream) + stream() (SSE), cancellable/timeout
 - extension/lib/v1core.js — PURE: buildMessages/buildPayload/parseCompletion
 - extension/lib/sse.js — PURE: SSE parser + incremental UTF-8 decoder
@@ -29,13 +32,19 @@
 
 ## Defaults
 - `<Alt><Super>v` — Importar e processar: system clipboard → Nexus stack → prompt → result node.
-- `<Alt><Super>c` — Processar pilha: prompt applied to the Nexus top → new result node.
-- `copy-top` — export the Nexus top to the system clipboard; unbound by default (capture a key in prefs).
-- HUD `Enter` — explicit export of the selected Nexus item.
+- `<Alt><Super>c` — Processar topo: prompt applied to the Nexus top → new result node.
+- `<Alt><Super>x` — copy-top: export the Nexus top to the system clipboard.
+- `<Alt><Super>h` — history: open the visual history panel.
+- `<Alt><Super>z` — pop: undo (remove the newest Nexus item).
+- `import`/`enqueue`/`run-next`/`drain` — available as unbound templates.
+- HUD `Enter` — explicit export of the selected item; `Ctrl+Enter` reuses it as a Nexus input.
 
 ## Key concepts
 - Nexus clipboard = top of `stack.json`. Inference never writes the system clipboard.
-- Export is explicit: `copy-top` or HUD Enter. Import is explicit: `push-process`.
+- Export is explicit: `copy-top` or HUD Enter/Copiar. Import is explicit: `push-process`/`import`.
+- Visual history: searchable tabs (Pilha/Histórico/Fila/Prompts); history.jsonl read newest-first.
+- Prompt templates: built-in library, fill a shortcut prompt in prefs or enqueue from the HUD.
+- Quiet feedback: successes → transient status chip + history log; system notifications per `notify-level` (default errors only).
 - LIFO stack: newest first; results are `kind: "result"` nodes with `parentId` = source.
 - FIFO: prompts enqueued as data; `run-next` consumes one per press, `drain` loops; consume only after success.
 - Shortcuts: JSON array in GSettings `shortcuts` (`{id,label,accel,mode,prompt}`), mirrored into `hotkey-slot-0..11` for `Main.wm.addKeybinding`.
@@ -45,6 +54,6 @@
 - State: ~/.local/share/nexus-clip-gnome/{stack.json,fifo.json,history.jsonl} (tree-ready via id/parentId).
 
 ## Constraints
-- GNOME Shell 45–50 (ESM; no imports.gi legacy). Wayland reload (logout/login) needed after install.
+- GNOME Shell 45–51 (ESM; no imports.gi legacy). Wayland reload (logout/login) needed after install.
 - No GTK in the shell process (freeze risk); prefs run in a separate process.
 - No credentials in the repo (api-key via dconf). No providers other than OpenAI-compatible /v1.

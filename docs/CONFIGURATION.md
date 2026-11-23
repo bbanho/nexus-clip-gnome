@@ -59,6 +59,8 @@ Supported `mode` values:
 | `drain` | No |
 | `pop` | No |
 | `show` | No |
+| `import` | No |
+| `history` | No |
 
 There can be at most 12 entries. Accelerators are canonicalized; duplicate and structurally
 invalid combinations are not registered. Preferences also warns about known GNOME-reserved
@@ -75,6 +77,18 @@ gsettings --schemadir extension/schemas \
 To set a shortcut list from a shell, ensure JSON and GVariant quoting are correct. Prefer
 the Preferences UI to avoid quoting errors. An explicit `[]` disables all shortcuts; an
 empty string means first-run/upgrade migration may run.
+
+### Feedback (notifications and status)
+
+| Setting | GSettings key | Default | Description |
+|---|---|---|---|
+| System notifications | `notify-level` | `errors` | `errors` (only errors), `all` (every operation), or `silent` (none). |
+| Status chip | `status-chip` | `true` | Show a transient on-screen panel naming the last operation. |
+| Status duration | `status-seconds` | `4` | How long the status chip stays visible (1–15 s). |
+| History limit | `history-limit` | `200` | Maximum history entries loaded into the visual history. |
+
+Routine successes always go to the status chip (when enabled) and the history log; the
+`notify-level` policy only controls whether a **system notification** also fires.
 
 ### Legacy migration
 
@@ -98,7 +112,7 @@ The extension stores:
 |---|---|
 | `stack.json` | Nexus clipboard, newest item first (LIFO). |
 | `fifo.json` | Queued prompts, oldest first (FIFO). |
-| `history.jsonl` | Append-only record of completed inference results. |
+| `history.jsonl` | Append-only record of completed inference results. Read newest-first into the visual history (clamped to `history-limit`). |
 
 Both JSON state files have `schemaVersion: 1` and an `items` array. Stack items contain an
 `id`, `text`, timestamp (`ts`), `kind` (`input` or `result`), and optional `parentId` and

@@ -19,10 +19,13 @@ actions, so an inference result will not silently overwrite text you copied else
 | Default | Action | Result |
 |---|---|---|
 | `Alt` + `Super` + `V` | **Importar e processar** | Reads plain text from the desktop clipboard, adds it to Nexus if it differs from the current top, then runs inference with this shortcut's prompt. |
-| `Alt` + `Super` + `C` | **Processar pilha** | Runs inference on the current Nexus top and pushes a new result node. |
+| `Alt` + `Super` + `C` | **Processar topo** | Runs inference on the current Nexus top and pushes a new result node. |
+| `Alt` + `Super` + `X` | **Copiar topo para o sistema** | Explicitly exports the Nexus top to the desktop clipboard. |
+| `Alt` + `Super` + `H` | **Histórico visual** | Opens the searchable history panel (see below). |
+| `Alt` + `Super` + `Z` | **Desfazer** | Pops the newest Nexus item; the previous item becomes the top. |
 
-The export shortcut is intentionally **unbound** by default. Assign a key to
-**Copiar topo do Nexus para o sistema** in Preferences, or use the HUD's explicit export.
+`import` (import without processing), `enqueue`, `run-next`, and `drain` ship as **unbound**
+templates. Assign a key in Preferences only if you use them.
 
 ## Available actions
 
@@ -44,11 +47,51 @@ Add or remove entries in **Atalhos e prompts**; up to 12 entries can be configur
 | **Rodar próximo da fila** | No | Run the oldest queued prompt against the current Nexus top. Consume it only after success. |
 | **Rodar fila inteira** | No | Process queued prompts in order, saving every successful step. On failure, completed work remains saved and the failed/remaining work stays queued. |
 | **Desfazer (voltar um item)** | No | Pop the newest stack item. The previous item becomes the Nexus top. |
-| **Mostrar pilha e fila** | No | Open the in-shell viewer. Use `↑`/`↓` or `k`/`j` to select, `Enter` to export the selected stack item, and `Esc`/`q` to close. |
+| **Importar do sistema (sem processar)** | No | Read the desktop clipboard into the Nexus stack without calling the model. |
+| **Mostrar pilha e fila** | No | Open the visual history on the Pilha tab. |
+| **Abrir histórico visual** | No | Open the visual history on the Histórico tab. |
 
 An action that requires a prompt will not start if its prompt is empty. If an inference is
 already running, another action reports that Nexus is busy instead of starting a second
 request.
+
+## Visual history
+
+`Alt` + `Super` + `H` (or the **Mostrar pilha e fila** action) opens a searchable panel with
+four tabs:
+
+- **Pilha** — the Nexus LIFO stack (inputs and results, newest first).
+- **Histórico** — the append-only inference log, newest first.
+- **Fila** — the queued prompts.
+- **Prompts** — the built-in prompt template library.
+
+Keys: `↑`/`↓` (or `j`/`k`) select · `1`–`4` or `Tab` switch tabs · `/` focuses the search box ·
+`Enter` copies the selected item to the **system clipboard** (explicit export) ·
+`Ctrl`+`Enter` reuses the selected text as a new Nexus input · `Del` removes a stack/queue
+item · `Esc` closes. On the **Prompts** tab, `Enter` enqueues the template into the FIFO
+queue. The footer shows the available actions as buttons for mouse use.
+
+## Prompt templates
+
+A library of ready-made prompts (corrigir, resumir, traduzir, explicar código, mensagem de
+commit, etc.) is available in two places:
+
+- **Preferences → Atalhos e prompts**: expand a shortcut and pick a *Modelo de prompt* to
+  fill its prompt editor in one click.
+- **Visual history → Prompts tab**: select a template and press `Enter` to enqueue it.
+
+## Notifications and status
+
+Each operation shows a small, transient **status chip** naming what ran (e.g.
+`✓ Processar topo · pilha 3`). System notifications are controlled by
+**Preferences → Notificações e estado**:
+
+- **Só erros (recomendado)** — default; routine successes stay on the status chip and in the
+  history log, so you always know what happened without notification spam.
+- **Todas as operações** — a system notification for every action.
+- **Silencioso** — no system notifications (the status chip still shows if enabled).
+
+You can toggle the status chip and set how long it stays visible (1–15 seconds).
 
 ## Customize a shortcut
 

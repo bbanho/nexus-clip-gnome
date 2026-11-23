@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- GNOME Shell 45–50 (`gnome-extensions` 50.x on the dev box).
+- GNOME Shell 45–51 (`gnome-extensions` 50.x/51.x on the dev box).
 - GJS + libsoup3, `glib-compile-schemas`.
 - Node.js **only for the pure-logic tests** (`node --test`) — the extension itself never
   runs under Node.
@@ -32,6 +32,22 @@ make check
    malformed-state recovery, shell/clipboard boundary invariants, and the schema contract
 3. `node --check` on `extension.js`, `prefs.js`, and every `lib/*.js`
 4. `gjs -m tests/gjs-store-smoke.mjs` — the real Gio persistence adapter
+5. `ast-grep scan` — AST-level structural invariants (skipped if ast-grep is absent)
+
+### Structural gate (ast-grep)
+
+`rules/` (see `sgconfig.yml`) holds AST-level guards that complement the regex-based
+`tests/shell-boundary.test.js`. Run them alone with `make structural`:
+
+| Rule | Guards |
+|---|---|
+| `no-gtk-in-shell` | No GTK/Adw/Gdk import outside `prefs.js` (CP-01, ADR-0009) |
+| `no-node-builtin-in-gjs` | No Node builtins anywhere in `extension/` (GJS, not Node) |
+| `no-gi-in-pure-modules` | Pure/Node-testable modules import no `gi://` |
+| `clipboard-write-outside-boundary` | `St.Clipboard…set_text` only in `hud.js`/`actions.js` (CP-03) |
+
+These verify the boundary *structurally* so you don't have to reproduce behavior by
+hand in a live shell. `ast-grep scan` exits non-zero on any violation.
 
 The live network smoke test is separate:
 
@@ -135,8 +151,9 @@ cat ~/.local/share/nexus-clip-gnome/{stack,fifo}.json
 tail -n5 ~/.local/share/nexus-clip-gnome/history.jsonl
 ```
 
-Open the stack viewer by binding an action to the **Mostrar pilha e fila** mode. `Enter`
-copies the selected item to the system clipboard; `Esc` closes.
+Open the visual history with `Alt` + `Super` + `H` (or bind the **Mostrar pilha e fila** /
+**Abrir histórico visual** modes). `Enter` copies the selected item to the system clipboard;
+`Ctrl+Enter` reuses it as a Nexus input; `Esc` closes.
 
 ## Conventions
 
