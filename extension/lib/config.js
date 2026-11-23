@@ -46,3 +46,13 @@ export function readApiConfig(settings) {
         timeoutSeconds: settings.get_int('request-timeout'),
     };
 }
+
+/** UI/feedback settings: notification policy + transient status chip. */
+export function readUiConfig(settings) {
+    return {
+        notifyLevel: settings.get_string('notify-level'),
+        statusChip: settings.get_boolean('status-chip'),
+        statusSeconds: settings.get_int('status-seconds'),
+        historyLimit: settings.get_int('history-limit'),
+    };
+}

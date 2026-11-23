@@ -3,9 +3,16 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import { readApiConfig } from './config.js';
-import { createLivePanel, closeAllOverlays, showStackView } from './hud.js';
+import { readApiConfig, readUiConfig } from './config.js';
+import {
+    createLivePanel,
+    createStatusChip,
+    closeAllOverlays,
+    showStackView,
+} from './hud.js';
 import { needsPrompt, parseShortcuts } from './shortcuts.js';
+import { PROMPT_TEMPLATES } from './prompts.js';
+import { formatStatus, shouldNotify } from './notify-policy.js';
 import { buildMessages } from './v1core.js';
 import { chat, stream } from './v1client.js';
 import * as store from './store.js';
@@ -81,15 +88,74 @@ export function createActions({ settings }) {
     let busy = false;
     let activeCancellable = null;
     let livePanel = null;
+    let lastStatus = '';
 
-    function notify(message) {
-        if (!destroyed)
+    // Quiet feedback: routine successes go to a transient status chip (and the
+    // history log); system notifications fire only per the user's policy
+    // (default: errors only). The user always sees *which* operation ran.
+    function report(kind, message) {
+        if (destroyed)
+            return;
+        lastStatus = message;
+        const ui = readUiConfig(settings);
+        if (ui.statusChip)
+            createStatusChip({ text: message, seconds: ui.statusSeconds });
+        if (shouldNotify(ui.notifyLevel, kind))
             Main.notify('Nexus Clip', message);
+    }
+
+    function success(label, detail = '') {
+        report('success', formatStatus({ ok: true, label, detail }));
+    }
+
+    function fail(message) {
+        report('error', formatStatus({ ok: false, label: message }));
     }
 
     function findShortcut(id) {
         return parseShortcuts(settings.get_string('shortcuts'))
             .find(shortcut => shortcut.id === id) ?? null;
+    }
+
+    function hudData() {
+        const ui = readUiConfig(settings);
+        return {
+            stack: store.loadStack(),
+            fifo: store.loadFifo(),
+            history: store.loadHistory(null, { limit: ui.historyLimit }),
+        };
+    }
+
+    function openHud(initialTab) {
+        showStackView({
+            ...hudData(),
+            templates: PROMPT_TEMPLATES,
+            initialTab,
+            lastStatus,
+            refresh: hudData,
+            onCopied: text => success('Copiado para o sistema', preview(text)),
+            onUseAsInput: text => {
+                const pushed = store.pushNode(store.loadStack(), text, { kind: 'input' });
+                store.saveStack(null, pushed.state);
+                success('Entrada no Nexus', `pilha ${pushed.state.items.length}`);
+            },
+            onRemove: (tab, id) => {
+                if (tab === 'fifo') {
+                    const removed = store.removeNode(store.loadFifo(), id);
+                    store.saveFifo(null, removed.state);
+                    success('Passo removido da fila', `${removed.state.items.length} restante(s)`);
+                } else {
+                    const removed = store.removeNode(store.loadStack(), id);
+                    store.saveStack(null, removed.state);
+                    success('Item removido do Nexus', `pilha ${removed.state.items.length}`);
+                }
+            },
+            onEnqueue: (prompt, label) => {
+                const next = store.enqueue(store.loadFifo(), prompt, { label });
+                store.saveFifo(null, next);
+                success('Prompt enfileirado', `fila ${next.items.length}`);
+            },
+        });
     }
 
     async function infer({ prompt, input, label }) {
@@ -131,7 +197,7 @@ export function createActions({ settings }) {
     function requirePrompt(shortcut) {
         const prompt = String(shortcut.prompt ?? '').trim();
         if (!prompt) {
-            notify(`"${shortcut.label}" está sem prompt — configure em Preferências`);
+            fail(`"${shortcut.label}" está sem prompt — configure em Preferências`);
             return null;
         }
         return prompt;
@@ -144,7 +210,7 @@ export function createActions({ settings }) {
 
         const clipboard = await readClipboard();
         if (!clipboard || !clipboard.trim()) {
-            notify('Clipboard do sistema vazio');
+            fail('Clipboard do sistema vazio');
             return;
         }
 
@@ -171,7 +237,7 @@ export function createActions({ settings }) {
         });
         const output = String(result ?? '').trim();
         if (!output) {
-            notify('Resposta vazia');
+            fail('Resposta vazia');
             return;
         }
 
@@ -191,7 +257,7 @@ export function createActions({ settings }) {
             mode: shortcut.mode,
             label: shortcut.label,
         });
-        notify(`✓ ${shortcut.label} · topo do Nexus (pilha ${saved.state.items.length})`);
+        success(shortcut.label, `pilha ${saved.state.items.length}`);
     }
 
     async function doProcess(shortcut) {
@@ -202,7 +268,7 @@ export function createActions({ settings }) {
         const state = store.loadStack();
         const top = store.peek(state);
         if (!top) {
-            notify('Pilha do Nexus vazia — importe algo com "Importar e processar"');
+            fail('Pilha do Nexus vazia — importe algo');
             return;
         }
 
@@ -213,7 +279,7 @@ export function createActions({ settings }) {
         });
         const output = String(result ?? '').trim();
         if (!output) {
-            notify('Resposta vazia');
+            fail('Resposta vazia');
             return;
         }
 
@@ -232,7 +298,7 @@ export function createActions({ settings }) {
             mode: shortcut.mode,
             label: shortcut.label,
         });
-        notify(`✓ ${shortcut.label} · topo do Nexus (pilha ${saved.state.items.length})`);
+        success(shortcut.label, `pilha ${saved.state.items.length}`);
     }
 
     function doEnqueue(shortcut) {
@@ -242,21 +308,21 @@ export function createActions({ settings }) {
         const fifo = store.loadFifo();
         const next = store.enqueue(fifo, prompt, { label: shortcut.label });
         store.saveFifo(null, next);
-        notify(`Fila += ${shortcut.label} (${next.items.length})`);
+        success('Prompt enfileirado', `${shortcut.label} · fila ${next.items.length}`);
     }
 
     async function doRunNext() {
         const stack = store.loadStack();
         const top = store.peek(stack);
         if (!top) {
-            notify('Pilha do Nexus vazia — importe algo com "Importar e processar"');
+            fail('Pilha do Nexus vazia — importe algo');
             return;
         }
 
         const fifo = store.loadFifo();
         const dequeued = store.dequeue(fifo);
         if (!dequeued.item) {
-            notify('Fila vazia — enfileire um prompt');
+            fail('Fila vazia — enfileire um prompt');
             return;
         }
 
@@ -267,7 +333,7 @@ export function createActions({ settings }) {
         });
         const output = String(result ?? '').trim();
         if (!output) {
-            notify('Resposta vazia — passo mantido na fila');
+            fail('Resposta vazia — passo mantido na fila');
             return;
         }
 
@@ -289,22 +355,22 @@ export function createActions({ settings }) {
         });
 
         if (dequeued.state.items.length === 0)
-            notify('Fila concluída — resultado no topo do Nexus');
+            success('Fila concluída', 'resultado no topo do Nexus');
         else
-            notify(`Passo ok · próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
+            success('Passo ok', `próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
     }
 
     async function doDrain() {
         const stack = store.loadStack();
         const top = store.peek(stack);
         if (!top) {
-            notify('Pilha do Nexus vazia — importe algo com "Importar e processar"');
+            fail('Pilha do Nexus vazia — importe algo');
             return;
         }
 
         let fifo = store.loadFifo();
         if (fifo.items.length === 0) {
-            notify('Fila vazia — enfileire um prompt');
+            fail('Fila vazia — enfileire um prompt');
             return;
         }
 
@@ -326,7 +392,7 @@ export function createActions({ settings }) {
             });
             const output = String(result ?? '').trim();
             if (!output) {
-                notify(`Resposta vazia no passo ${steps + 1} — fila preservada`);
+                fail(`Resposta vazia no passo ${steps + 1} — fila preservada`);
                 return;
             }
 
@@ -353,32 +419,43 @@ export function createActions({ settings }) {
             });
         }
 
-        notify(`Fila concluída (${steps} passo(s)) — resultado no topo do Nexus`);
+        success('Fila concluída', `${steps} passo(s) · resultado no topo do Nexus`);
     }
 
     function doPop() {
         const current = store.loadStack();
         const popped = store.pop(current);
         if (!popped.item) {
-            notify('Pilha do Nexus vazia');
+            fail('Pilha do Nexus vazia');
             return;
         }
         store.saveStack(null, popped.state);
         const top = store.peek(popped.state);
         if (top)
-            notify(`Voltou ao item anterior: ${preview(top.text)}`);
+            success('Desfazer', preview(top.text));
         else
-            notify('Último item descartado — pilha do Nexus vazia');
+            success('Desfazer', 'pilha do Nexus vazia');
     }
 
     function doCopyTop() {
         const top = store.peek(store.loadStack());
         if (!top) {
-            notify('Pilha do Nexus vazia');
+            fail('Pilha do Nexus vazia');
             return;
         }
         writeClipboard(top.text);
-        notify(`Topo do Nexus copiado para o sistema · ${preview(top.text)}`);
+        success('Copiado para o sistema', preview(top.text));
+    }
+
+    async function doImport() {
+        const clipboard = await readClipboard();
+        if (!clipboard || !clipboard.trim()) {
+            fail('Clipboard do sistema vazio');
+            return;
+        }
+        const pushed = store.pushNode(store.loadStack(), clipboard.trim(), { kind: 'input' });
+        store.saveStack(null, pushed.state);
+        success('Importado para o Nexus', `pilha ${pushed.state.items.length}`);
     }
 
     async function execute(shortcut) {
@@ -389,6 +466,8 @@ export function createActions({ settings }) {
             return await doProcess(shortcut);
         case 'copy-top':
             return doCopyTop();
+        case 'import':
+            return await doImport();
         case 'enqueue':
             return doEnqueue(shortcut);
         case 'run-next':
@@ -398,7 +477,7 @@ export function createActions({ settings }) {
         case 'pop':
             return doPop();
         default:
-            notify(`Ação desconhecida: ${shortcut.mode}`);
+            fail(`Ação desconhecida: ${shortcut.mode}`);
             return undefined;
         }
     }
@@ -412,26 +491,27 @@ export function createActions({ settings }) {
             return;
 
         if (shortcut.mode === 'show') {
-            showStackView({
-                stack: store.loadStack(),
-                fifo: store.loadFifo(),
-            });
+            openHud('stack');
+            return;
+        }
+        if (shortcut.mode === 'history') {
+            openHud('history');
             return;
         }
 
         if (busy) {
-            notify('Ocupado — aguarde a operação atual');
+            report('info', 'Ocupado — aguarde a operação atual');
             return;
         }
         if (needsPrompt(shortcut.mode) && !String(shortcut.prompt ?? '').trim()) {
-            notify(`"${shortcut.label}" está sem prompt — configure em Preferências`);
+            fail(`"${shortcut.label}" está sem prompt — configure em Preferências`);
             return;
         }
 
         busy = true;
         Promise.resolve()
             .then(() => execute(shortcut))
-            .catch(error => notify(`Erro: ${friendlyError(error)}`))
+            .catch(error => fail(friendlyError(error)))
             .finally(() => {
                 busy = false;
                 activeCancellable = null;

@@ -15,6 +15,8 @@ export const MODES = [
     'drain',
     'pop',
     'show',
+    'import',
+    'history',
 ];
 
 export const MODE_LABELS = {
@@ -26,6 +28,8 @@ export const MODE_LABELS = {
     'drain': 'Rodar fila inteira',
     'pop': 'Desfazer (voltar um item)',
     'show': 'Mostrar pilha e fila',
+    'import': 'Importar do sistema (sem processar)',
+    'history': 'Abrir histórico visual',
 };
 
 const MODE_SET = new Set(MODES);
@@ -46,7 +50,7 @@ const MODIFIER_ALIASES = {
     meta: 'Meta',
 };
 
-// Accelerators already owned by GNOME Shell on a default GNOME 45-50 setup.
+// Accelerators already owned by GNOME Shell on a default GNOME 45-51 setup.
 // Kept as warnings (the shell wins silently otherwise).
 const GNOME_RESERVED = [
     '<Super>v',
@@ -262,18 +266,59 @@ export function defaultShortcuts() {
         },
         {
             id: 'sc_default_process',
-            label: 'Processar pilha',
+            label: 'Processar topo',
             accel: '<Alt><Super>c',
             mode: 'process',
             prompt: DEFAULT_PROMPT,
         },
-        // Export is explicit by design. This template is unbound so the user
-        // only has to capture a key in prefs.
         {
             id: 'sc_default_copy_top',
             label: 'Copiar topo para o sistema',
-            accel: '',
+            accel: '<Alt><Super>x',
             mode: 'copy-top',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_history',
+            label: 'Histórico visual',
+            accel: '<Alt><Super>h',
+            mode: 'history',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_pop',
+            label: 'Desfazer (voltar um item)',
+            accel: '<Alt><Super>z',
+            mode: 'pop',
+            prompt: '',
+        },
+        // Available but unbound: capture a key in prefs only if you use them.
+        {
+            id: 'sc_default_import',
+            label: 'Importar sem processar',
+            accel: '',
+            mode: 'import',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_enqueue',
+            label: 'Enfileirar prompt',
+            accel: '',
+            mode: 'enqueue',
+            prompt: DEFAULT_PROMPT,
+        },
+        {
+            id: 'sc_default_run_next',
+            label: 'Rodar próximo da fila',
+            accel: '',
+            mode: 'run-next',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_drain',
+            label: 'Rodar fila inteira',
+            accel: '',
+            mode: 'drain',
             prompt: '',
         },
     ];

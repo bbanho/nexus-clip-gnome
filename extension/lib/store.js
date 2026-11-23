@@ -58,6 +58,7 @@ export const loadStack = dir => io.loadStack(dir);
 export const saveStack = (dir, state) => io.saveStack(dir, state);
 export const loadFifo = dir => io.loadFifo(dir);
 export const saveFifo = (dir, state) => io.saveFifo(dir, state);
+export const loadHistory = (dir, options) => io.loadHistory(dir, options);
 export const appendHistory = (dir, node) => io.appendHistory(dir, node);
 export const clearHistory = dir => io.clearHistory(dir);
 
@@ -76,5 +77,6 @@ export {
     push,
     pushNode,
     pushResult,
+    removeNode,
     serializeState,
 } from './store-core.js';

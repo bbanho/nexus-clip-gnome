@@ -86,5 +86,24 @@
       <default>false</default>
       <summary>Stream responses</summary>
     </key>
+
+    <!-- Feedback policy. Successes go to a transient status chip; system
+         notifications fire only per `notify-level` (default: errors only). -->
+    <key name="notify-level" type="s">
+      <default>'errors'</default>
+      <summary>System notification policy: errors | all | silent</summary>
+    </key>
+    <key name="status-chip" type="b">
+      <default>true</default>
+      <summary>Show a transient on-screen status chip for each operation</summary>
+    </key>
+    <key name="status-seconds" type="i">
+      <default>4</default>
+      <summary>How long the status chip stays visible (seconds)</summary>
+    </key>
+    <key name="history-limit" type="i">
+      <default>200</default>
+      <summary>Maximum history entries loaded into the visual history</summary>
+    </key>
   </schema>
 </schemalist>

@@ -161,6 +161,21 @@ export function peek(state) {
     return state.items[0];
 }
 
+/**
+ * Remove a single node by id (used by the visual history to delete a stack or
+ * queue item). Works on any `{ items: [{ id, ... }] }` state. Returns
+ * `{ state, item }`; `item` is null when the id was not found.
+ */
+export function removeNode(state, id) {
+    const next = cloneState(state);
+    const target = String(id ?? '');
+    const index = next.items.findIndex(item => item.id === target);
+    if (index === -1)
+        return { state: next, item: null };
+    const [item] = next.items.splice(index, 1);
+    return { state: next, item };
+}
+
 export function enqueue(state, prompt, { label = '' } = {}) {
     const next = cloneState(state);
     const p = String(prompt ?? '').trim();

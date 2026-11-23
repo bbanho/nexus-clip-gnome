@@ -8,12 +8,19 @@ import {
     MAX_SHORTCUTS,
     MODES,
     canonicalAccel,
+    defaultShortcuts,
     makeId,
     modeLabel,
     needsPrompt,
     validateShortcuts,
 } from './lib/shortcuts.js';
 import { loadShortcuts, saveShortcuts } from './lib/config.js';
+import { PROMPT_TEMPLATES } from './lib/prompts.js';
+import {
+    NOTIFY_LEVELS,
+    NOTIFY_LEVEL_LABELS,
+    normalizeNotifyLevel,
+} from './lib/notify-policy.js';
 import * as store from './lib/store.js';
 
 const MOD_MASK =
@@ -60,6 +67,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
 
         this._buildApiGroup(page);
         this._buildShortcutsGroup(page);
+        this._buildFeedbackGroup(page);
         this._buildStackGroup(page);
         this._buildHelpGroup(page);
 
@@ -136,6 +144,9 @@ export default class NexusClipPreferences extends ExtensionPreferences {
     _buildShortcutsGroup(page) {
         this._shortcutGroup = new Adw.PreferencesGroup({
             title: 'Atalhos e prompts',
+            description:
+                'Cada linha mostra a tecla, a ação e o prompt. Expanda para editar. ' +
+                'Use um modelo de prompt para preencher rapidamente.',
         });
         page.add(this._shortcutGroup);
 
@@ -157,6 +168,19 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         this._addRow.add_suffix(addButton);
         this._addRow.set_activatable_widget(addButton);
 
+        this._restoreRow = new Adw.ActionRow({
+            title: 'Restaurar atalhos padrão',
+            subtitle: 'Substitui a lista atual pelos 5 atalhos principais + modelos sem tecla',
+        });
+        const restoreButton = new Gtk.Button({
+            label: 'Restaurar',
+            valign: Gtk.Align.CENTER,
+        });
+        restoreButton.add_css_class('destructive-action');
+        restoreButton.connect('clicked', () => this._restoreDefaults());
+        this._restoreRow.add_suffix(restoreButton);
+        this._restoreRow.set_activatable_widget(restoreButton);
+
         this._rebuildShortcutRows();
     }
 
@@ -176,17 +200,27 @@ export default class NexusClipPreferences extends ExtensionPreferences {
 
         this._shortcutGroup.add(this._addRow);
         this._mountedRows.push(this._addRow);
+        this._shortcutGroup.add(this._restoreRow);
+        this._mountedRows.push(this._restoreRow);
 
         this._refreshWarnings();
+    }
+
+    _shortcutSubtitle(shortcut) {
+        const accel = shortcut.accel ? this._accelLabel(shortcut.accel) : 'sem atalho';
+        const action = modeLabel(shortcut.mode);
+        const prompt = needsPrompt(shortcut.mode) && shortcut.prompt
+            ? ` · ${preview(shortcut.prompt, 60)}`
+            : '';
+        return `${accel} · ${action}${prompt}`;
     }
 
     _createShortcutRow(shortcut, index) {
         const expander = new Adw.ExpanderRow({
             title: shortcut.label || `Atalho ${index + 1}`,
-            subtitle: shortcut.accel
-                ? this._accelLabel(shortcut.accel)
-                : 'sem atalho',
+            subtitle: this._shortcutSubtitle(shortcut),
         });
+        const refreshSubtitle = () => expander.set_subtitle(this._shortcutSubtitle(shortcut));
 
         const removeButton = new Gtk.Button({
             icon_name: 'user-trash-symbolic',
@@ -216,7 +250,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
             label: this._accelLabel(shortcut.accel),
             valign: Gtk.Align.CENTER,
         });
-        this._attachKeyCapture(accelButton, shortcut, expander);
+        this._attachKeyCapture(accelButton, shortcut, expander, refreshSubtitle);
         accelRow.add_suffix(accelButton);
         accelRow.set_activatable_widget(accelButton);
         expander.add_row(accelRow);
@@ -228,20 +262,21 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         });
         expander.add_row(modeRow);
 
-        const promptBox = this._buildPromptBox(shortcut);
+        const promptBox = this._buildPromptBox(shortcut, refreshSubtitle);
         promptBox.set_visible(needsPrompt(shortcut.mode));
         expander.add_row(promptBox);
 
         modeRow.connect('notify::selected', row => {
             shortcut.mode = MODES[row.get_selected()] ?? 'push-process';
             promptBox.set_visible(needsPrompt(shortcut.mode));
+            refreshSubtitle();
             this._scheduleSave();
         });
 
         return expander;
     }
 
-    _buildPromptBox(shortcut) {
+    _buildPromptBox(shortcut, refreshSubtitle) {
         const box = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
             spacing: 6,
@@ -251,15 +286,33 @@ export default class NexusClipPreferences extends ExtensionPreferences {
             margin_end: 12,
         });
 
-        const label = new Gtk.Label({
-            label: 'Prompt do usuário (enviado como system message)',
-            xalign: 0,
-        });
-        label.add_css_class('dim-label');
-        box.append(label);
-
         const buffer = new Gtk.TextBuffer();
         buffer.set_text(shortcut.prompt ?? '', -1);
+
+        // Ready-made prompt templates: picking one fills the editor below.
+        const templateRow = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 8,
+        });
+        const templateLabel = new Gtk.Label({
+            label: 'Modelo de prompt',
+            xalign: 0,
+        });
+        templateLabel.add_css_class('dim-label');
+        const combo = new Gtk.ComboBoxText({ hexpand: true });
+        combo.append_text('(personalizado)');
+        for (const template of PROMPT_TEMPLATES)
+            combo.append_text(template.label);
+        combo.set_active(0);
+        combo.connect('changed', () => {
+            const index = combo.get_active();
+            if (index > 0) {
+                buffer.set_text(PROMPT_TEMPLATES[index - 1].prompt, -1);
+            }
+        });
+        templateRow.append(templateLabel);
+        templateRow.append(combo);
+        box.append(templateRow);
 
         const view = new Gtk.TextView({
             buffer,
@@ -270,20 +323,21 @@ export default class NexusClipPreferences extends ExtensionPreferences {
             left_margin: 6,
             right_margin: 6,
         });
-
         const frame = new Gtk.Frame({ child: view });
         box.append(frame);
 
         buffer.connect('changed', () => {
             const [start, end] = buffer.get_bounds();
             shortcut.prompt = buffer.get_text(start, end, false);
+            if (refreshSubtitle)
+                refreshSubtitle();
             this._scheduleSave();
         });
 
         return box;
     }
 
-    _attachKeyCapture(button, shortcut, expander) {
+    _attachKeyCapture(button, shortcut, expander, refreshSubtitle) {
         let capturing = false;
         const controller = new Gtk.EventControllerKey();
         button.add_controller(controller);
@@ -318,7 +372,8 @@ export default class NexusClipPreferences extends ExtensionPreferences {
                 shortcut.accel = '';
                 capturing = false;
                 restoreLabel();
-                expander.set_subtitle('sem atalho');
+                if (refreshSubtitle)
+                    refreshSubtitle();
                 this._scheduleSave(true);
                 return true;
             }
@@ -344,7 +399,8 @@ export default class NexusClipPreferences extends ExtensionPreferences {
             shortcut.accel = canonicalAccel(accel);
             capturing = false;
             restoreLabel();
-            expander.set_subtitle(this._accelLabel(shortcut.accel));
+            if (refreshSubtitle)
+                refreshSubtitle();
             this._scheduleSave(true);
             return true;
         });
@@ -379,6 +435,12 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         const index = this._shortcuts.indexOf(shortcut);
         if (index >= 0)
             this._shortcuts.splice(index, 1);
+        this._rebuildShortcutRows();
+        this._scheduleSave(true);
+    }
+
+    _restoreDefaults() {
+        this._shortcuts = defaultShortcuts();
         this._rebuildShortcutRows();
         this._scheduleSave(true);
     }
@@ -432,7 +494,56 @@ export default class NexusClipPreferences extends ExtensionPreferences {
     }
 
     // ------------------------------------------------------------------
-    // Stack / FIFO
+    // Feedback (notifications + status chip)
+    // ------------------------------------------------------------------
+
+    _buildFeedbackGroup(page) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Notificações e estado',
+            description:
+                'Cada operação mostra um painel temporário com o que foi feito. ' +
+                'As notificações do sistema ficam reservadas para erros por padrão.',
+        });
+        page.add(group);
+
+        const notifyRow = new Adw.ComboRow({
+            title: 'Notificações do sistema',
+            model: Gtk.StringList.new(NOTIFY_LEVELS.map(level => NOTIFY_LEVEL_LABELS[level])),
+            selected: NOTIFY_LEVELS.indexOf(
+                normalizeNotifyLevel(this._settings.get_string('notify-level'))
+            ),
+        });
+        notifyRow.connect('notify::selected', row => {
+            this._settings.set_string('notify-level', NOTIFY_LEVELS[row.get_selected()]);
+        });
+        group.add(notifyRow);
+
+        const chipRow = new Adw.SwitchRow({
+            title: 'Mostrar estado no ecrã',
+            subtitle: 'Painel temporário com a última operação (sem notificação do sistema)',
+        });
+        this._settings.bind('status-chip', chipRow, 'active', 0);
+        group.add(chipRow);
+
+        const secondsRow = new Adw.SpinRow({
+            title: 'Duração do estado (segundos)',
+            adjustment: new Gtk.Adjustment({
+                lower: 1,
+                upper: 15,
+                step_increment: 1,
+                page_increment: 5,
+                value: this._settings.get_int('status-seconds'),
+            }),
+            digits: 0,
+        });
+        secondsRow.connect('notify::value', row => {
+            this._settings.set_int('status-seconds', Math.round(row.get_value()));
+        });
+        group.add(secondsRow);
+    }
+
+    // ------------------------------------------------------------------
+    // Stack / FIFO / history
     // ------------------------------------------------------------------
 
     _buildStackGroup(page) {
@@ -473,21 +584,21 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         });
         group.add(dirRow);
 
+        this._historyRow = new Adw.ActionRow({
+            title: 'Histórico',
+            subtitle: 'Log append-only de inferências (visível no histórico visual)',
+        });
         const clearHistory = new Gtk.Button({
             label: 'Limpar histórico',
             valign: Gtk.Align.CENTER,
         });
-        const historyRow = new Adw.ActionRow({
-            title: 'history.jsonl',
-            subtitle: 'Log append-only de inferências',
-        });
-        historyRow.add_suffix(clearHistory);
         clearHistory.add_css_class('destructive-action');
         clearHistory.connect('clicked', () => {
             store.clearHistory(null);
-            historyRow.set_subtitle('Histórico limpo');
+            this._refreshStackRows();
         });
-        group.add(historyRow);
+        this._historyRow.add_suffix(clearHistory);
+        group.add(this._historyRow);
 
         this._refreshStackRows();
     }
@@ -495,6 +606,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
     _refreshStackRows() {
         const stack = store.loadStack();
         const fifo = store.loadFifo();
+        const history = store.loadHistory();
         const top = store.peek(stack);
 
         this._stackRow.set_title(`Pilha do Nexus (${stack.items.length})`);
@@ -508,40 +620,48 @@ export default class NexusClipPreferences extends ExtensionPreferences {
                 ? `próximo: ${preview(fifo.items[0].prompt, 110)}`
                 : 'vazia'
         );
+
+        this._historyRow.set_title(`Histórico (${history.length})`);
     }
 
     // ------------------------------------------------------------------
-    // Help
+    // Help — concrete direct/indirect examples
     // ------------------------------------------------------------------
 
     _buildHelpGroup(page) {
         const group = new Adw.PreferencesGroup({
-            title: 'Como funciona',
+            title: 'Como funciona — exemplos',
+            description: 'O Nexus tem um clipboard próprio; o do sistema só é tocado por importação/exportação explícita.',
         });
         page.add(group);
 
-        const pushRow = new Adw.ActionRow({
-            title: 'Importar e processar',
-            subtitle: 'Lê o clipboard do sistema, importa para o Nexus e aplica o prompt. O resultado fica no topo do Nexus; o clipboard do sistema não é sobrescrito.',
-        });
-        group.add(pushRow);
-
-        const processRow = new Adw.ActionRow({
-            title: 'Processar pilha',
-            subtitle: 'Aplica o prompt ao topo do Nexus e empilha o resultado como novo item.',
-        });
-        group.add(processRow);
-
-        const copyRow = new Adw.ActionRow({
-            title: 'Copiar topo do Nexus para o sistema',
-            subtitle: 'Exportação explícita (sem tecla padrão). No HUD, Enter também copia o item selecionado.',
-        });
-        group.add(copyRow);
-
-        const chainRow = new Adw.ActionRow({
-            title: 'Encadeamento',
-            subtitle: 'Cada resultado vira um nó filho do item processado; use Desfazer para voltar.',
-        });
-        group.add(chainRow);
+        const examples = [
+            [
+                'Direto — corrigir um texto',
+                'Copie o texto (Ctrl+C) → Alt+Super+V processa e guarda no Nexus → Alt+Super+X copia o resultado para colar noutro app.',
+            ],
+            [
+                'Indireto — refinar em cadeia',
+                'Alt+Super+C reaplica o prompt ao topo as vezes que quiser; cada resultado vira um novo item. Alt+Super+Z volta atrás.',
+            ],
+            [
+                'Ver e reutilizar qualquer item',
+                'Alt+Super+H abre o histórico visual: pesquise, Enter copia para o sistema, Ctrl+Enter reutiliza como entrada, Del remove.',
+            ],
+            [
+                'Modelos de prompt prontos',
+                'No separador Prompts do histórico, Enter enfileira um modelo. Aqui em Preferências, escolha um modelo para preencher o prompt de um atalho.',
+            ],
+            [
+                'Encadear vários prompts',
+                'Enfileire prompts (ação "Enfileirar prompt") e use "Rodar próximo da fila" ou "Rodar fila inteira". Um passo só é consumido após sucesso.',
+            ],
+            [
+                'Importar sem processar',
+                'A ação "Importar do sistema (sem processar)" guarda o clipboard no Nexus sem chamar o modelo.',
+            ],
+        ];
+        for (const [title, subtitle] of examples)
+            group.add(new Adw.ActionRow({ title, subtitle }));
     }
 }
