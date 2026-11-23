@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Super command bar** (`lib/command-keys.js`, `hud.js`, `extension.js`): a single
+  `Super+;` leader opens a keyboard-only St panel; `V/C/X/Q/N/D/Z/H` run actions and `1`–`5`
+  enqueue prompt templates. Plain `Super+letter` stays natural in GNOME. New keys
+  `command-accel` and `hotkey-command`.
+- **Persistent queue badge** (`queue-badge`, default on): shows FIFO depth and the next step
+  while work is pending, and updates after every drain step. `run-next` status now reports
+  the remaining count explicitly.
+- ADR-0012 (single Super leader + visible FIFO).
 - **Visual history** (`hud.js`): searchable, tabbed panel (Pilha / Histórico / Fila / Prompts)
   adapting the Clipboard History UX. `Enter` exports to the system clipboard, `Ctrl+Enter`
   reuses an item as a Nexus input, `Del` removes a stack/queue item, `1`–`4`/`Tab` switch tabs,

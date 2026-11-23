@@ -10,6 +10,7 @@
 - extension/lib/prompts.js — PURE: built-in prompt template library + search
 - extension/lib/history-core.js — PURE: parse/filter the append-only history.jsonl (newest-first, sanitized)
 - extension/lib/notify-policy.js — PURE: notification policy (errors/all/silent) + status formatting
+- extension/lib/command-keys.js — PURE: Super command palette map + queue badge/header formatting
 - extension/lib/v1client.js — HTTP client: chat() (non-stream) + stream() (SSE), cancellable/timeout
 - extension/lib/v1core.js — PURE: buildMessages/buildPayload/parseCompletion
 - extension/lib/sse.js — PURE: SSE parser + incremental UTF-8 decoder
@@ -25,12 +26,14 @@
 - docs/DEVELOPMENT.md — build/install/test/smoke workflow
 - docs/CRITICAL_POINTS.md — invariants (freeze, clipboard boundary, state) mapped to tests
 - docs/TROUBLESHOOTING.md — failure modes (including the old Super+X freeze)
-- docs/adr/ — decision log (0001..0010)
+- docs/adr/ — decision log (0001..0012)
 - tests/ — node --test (logic + shell/schema contracts) + GJS store/client smoke scripts
 - .githooks/ — pre-commit/pre-push run `make check` (enable with `make hooks`)
 - .github/workflows/ci.yml — `make check` on pull requests and master
 
 ## Defaults
+- `Super+;` — one global leader → keyboard command bar: V/C/X/Q/N/D/Z/H actions, 1–5 enqueue prompt templates; plain Super+letter stays natural.
+- `queue-badge=true` — persistent top badge with FIFO depth + next step while work is pending; disappears when empty.
 - `<Alt><Super>v` — Importar e processar: system clipboard → Nexus stack → prompt → result node.
 - `<Alt><Super>c` — Processar topo: prompt applied to the Nexus top → new result node.
 - `<Alt><Super>x` — copy-top: export the Nexus top to the system clipboard.
@@ -47,7 +50,8 @@
 - Quiet feedback: successes → transient status chip + history log; system notifications per `notify-level` (default errors only).
 - LIFO stack: newest first; results are `kind: "result"` nodes with `parentId` = source.
 - FIFO: prompts enqueued as data; `run-next` consumes one per press, `drain` loops; consume only after success.
-- Shortcuts: JSON array in GSettings `shortcuts` (`{id,label,accel,mode,prompt}`), mirrored into `hotkey-slot-0..11` for `Main.wm.addKeybinding`.
+- Shortcuts: JSON array in GSettings `shortcuts` (`{id,label,accel,mode,prompt}`), mirrored into `hotkey-slot-0..11` for `Main.wm.addKeybinding`; the single Super leader uses `command-accel` → `hotkey-command`.
+- Super command bar: St-only modal; resolves configured shortcut by mode, falls back to a synthetic one so all palette keys work without extra global grabs.
 - Pure/impure split: logic in pure modules (node --test), GJS/UI thin, GJS smoke + manual validation.
 - /v1 contract: POST chat/completions (OpenAI-compatible), SSE streaming with `data: [DONE]` terminator.
 - GJS/libsoup3: no promisify on send_and_read_async; send_finish() returns Gio.InputStream; TextDecoder has no stream option.

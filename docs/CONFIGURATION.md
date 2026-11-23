@@ -67,6 +67,13 @@ invalid combinations are not registered. Preferences also warns about known GNOM
 combinations. The shell mirrors active accelerator values to internal GSettings keys
 `hotkey-slot-0` through `hotkey-slot-11`; do not edit those internal keys directly.
 
+The **command leader** is a separate key so the whole palette needs only one global grab:
+
+| Setting | GSettings key | Default | Description |
+|---|---|---|---|
+| Command leader | `command-accel` | `<Super>semicolon` | Opens the keyboard command bar. Normalized on read/write; invalid or modifier-only values fall back to the default. |
+| Internal command slot | `hotkey-command` | `[]` | Mirror of `command-accel` used by `Main.wm.addKeybinding`. Do not edit directly. |
+
 To inspect settings using the repository schema:
 
 ```bash
@@ -86,6 +93,7 @@ empty string means first-run/upgrade migration may run.
 | Status chip | `status-chip` | `true` | Show a transient on-screen panel naming the last operation. |
 | Status duration | `status-seconds` | `4` | How long the status chip stays visible (1–15 s). |
 | History limit | `history-limit` | `200` | Maximum history entries loaded into the visual history. |
+| Queue badge | `queue-badge` | `true` | Persistent top-of-screen badge showing FIFO depth and the next step while work is pending. |
 
 Routine successes always go to the status chip (when enabled) and the history log; the
 `notify-level` policy only controls whether a **system notification** also fires.

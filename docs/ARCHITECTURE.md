@@ -35,7 +35,7 @@ never creates GTK widgets (ADR-0009); in-shell UI is built with St/Clutter (ADR-
 ```
 extension/
 ├── metadata.json              # uuid nexus-clip@bbanho, schema, shell-version 45..51
-├── extension.js               # Extension: enable/disable + dynamic keybinding slots
+├── extension.js               # Extension: enable/disable + action slots + Super command slot
 ├── prefs.js                   # ExtensionPreferences: API / shortcuts / Nexus / help
 ├── schemas/
 │   └── org.gnome.shell.extensions.nexus-clip.gschema.xml
@@ -46,7 +46,8 @@ extension/
     ├── prompts.js             # PURE: built-in prompt template library + search
     ├── history-core.js        # PURE: parse/filter history.jsonl (newest-first, sanitized)
     ├── notify-policy.js       # PURE: notification policy (errors/all/silent) + status format
-    ├── hud.js                 # St/Clutter visual history (tabs) + live panel + status chip
+    ├── command-keys.js        # PURE: Super command palette, badge/header formatting
+    ├── hud.js                 # St/Clutter visual history + command bar + queue badge + chip
     ├── v1client.js            # HTTP: chat() (non-stream) and stream() (SSE)
     ├── v1core.js              # PURE: buildMessages / buildPayload / parseCompletion
     ├── sse.js                 # PURE: createSseParser + createUtf8Decoder
@@ -64,6 +65,7 @@ tests/
 ├── prompts.test.js
 ├── history-core.test.js
 ├── notify-policy.test.js
+├── command-keys.test.js
 ├── shell-boundary.test.js
 ├── schema.test.js
 ├── v1core.test.js
@@ -78,6 +80,7 @@ tests/
 | `prompts.js` | Built-in prompt template library + search | ✅ pure |
 | `history-core.js` | Parse/filter `history.jsonl` (newest-first, sanitized) | ✅ pure |
 | `notify-policy.js` | Notification policy + status formatting | ✅ pure |
+| `command-keys.js` | Command palette map, accelerator normalization, queue badge text | ✅ pure |
 | `config.js` | GSettings read/write, migration, registration signature | ✅ fake settings |
 | `store-core.js` | LIFO/FIFO semantics, node shape, `removeNode`, clamping | ✅ pure |
 | `store-io.js` | JSON/JSONL serialization over injected primitives (+ `loadHistory`) | ✅ via adapters |
@@ -86,7 +89,7 @@ tests/
 | `sse.js` | SSE framing + incremental UTF-8 decoding | ✅ pure |
 | `store.js` | Gio persistence adapter | ⚠️ GJS smoke |
 | `v1client.js` | Network I/O (libsoup3), cancellable + timeout | ⚠️ GJS smoke |
-| `hud.js` | St/Clutter visual history (tabs) + streaming panel + status chip | ⚠️ shell UI |
+| `hud.js` | St/Clutter visual history, command bar, queue badge, streaming panel, status chip | ⚠️ shell UI |
 | `actions.js` | Orchestration (`St.Clipboard`, feedback policy, busy guard) | ⚠️ shell only |
 | `prefs.js` | Preferences UI (GTK/Adw in a separate process) | ⚠️ manual |
 
@@ -105,16 +108,23 @@ flowchart LR
   D --> E[registrationList]
   E --> F[write hotkey-slot-N + addKeybinding]
   F --> G[shell keypress → runById]
+  N[command-accel] --> O[hotkey-command + addKeybinding]
+  O --> P[Super leader → openCommandBar → single-key dispatch]
+  Q[changed::queue-badge] --> R[refreshQueueBadge]
   H[changed::shortcuts] --> I{signature changed?}
   I -- no --> G
   I -- yes --> J[removeBindings]
   J --> E
-  K[Extension.disable] --> L[removeBindings + destroy actions]
+  K[Extension.disable] --> L[removeBindings + removeCommandBinding + destroy actions]
 ```
 
 - `enable()` builds the action set and registers one shell keybinding per **registration
-  entry** (non-empty, de-duplicated accelerator), using schema slots
-  `hotkey-slot-0..11`.
+  entry** (non-empty, de-duplicated accelerator), using schema slots `hotkey-slot-0..11`.
+  It also registers **one** separate leader binding (`command-accel` → `hotkey-command`) that
+  opens the keyboard command bar, so no ordinary `Super+letter` is grabbed.
+- `createActions()` mirrors the FIFO into a persistent `getQueueBadge()` actor after every
+  mutation; the badge is hidden while the FIFO is empty. The command bar and badge are St
+  actors and are closed on `disable()`.
 - `changed::shortcuts` re-grabs only when the `(id, accel)` signature changes. Prompt and
   label edits are picked up lazily: the handler resolves the shortcut **by id** from
   current settings on every keypress.
@@ -317,6 +327,9 @@ flowchart TD
 | `request-timeout` | `i` | `90` | `v1client` |
 | `presets` | `s` (legacy JSON object) | 4 seeds | one-time migration |
 | `stream` | `b` | `false` | `v1client` + live panel |
+| `command-accel` | `s` | `<Super>semicolon` | one global leader → command bar |
+| `hotkey-command` | `as` (internal) | `[]` | mirror used by `addKeybinding` |
+| `queue-badge` | `b` | `true` | persistent FIFO badge |
 
 A shortcut entry:
 

@@ -25,6 +25,11 @@ It connects to an OpenAI-compatible chat-completions endpoint.
   template straight from the history panel.
 - **Quiet feedback** — each operation shows a transient status chip; system notifications
   are reserved for errors by default.
+- **One Super leader, all actions** — `Super+;` opens a keyboard-only command bar; press
+  `V/C/X/Q/N/D/Z/H` for an action or `1`–`5` to enqueue a prompt template. Plain
+  `Super+letter` keeps its normal GNOME meaning.
+- **A queue you can feel** — a persistent badge shows FIFO depth and the next step while any
+  work is pending, and updates after every step of a drain.
 - **Choose your shortcuts and prompts** in Preferences, with up to 12 shortcut entries.
 - **Use streaming** to watch a response arrive in a non-focusable shell panel.
 

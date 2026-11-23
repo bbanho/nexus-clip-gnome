@@ -235,3 +235,35 @@ history log records completed inferences regardless of the policy.
 ```
 <PASTE OUTPUT HERE>
 ```
+
+## 12. Super leader + visible FIFO (ADR-0012)
+
+> **Reload caveat:** GNOME Shell 51 caches extension JS/metadata for the session. After
+> `make install`, `gnome-extensions disable/enable` can leave the old code loaded (the
+> extension still reports the previous version and `hotkey-command` stays `[]`). Restart the
+> shell / log out and back in before running this section. Verify with:
+>
+> ```bash
+> SD=~/.local/share/gnome-shell/extensions/nexus-clip@bbanho/schemas
+> gsettings --schemadir "$SD" get org.gnome.shell.extensions.nexus-clip hotkey-command
+> # expected: ['<Super>semicolon']
+> ```
+
+1. Press `Super+;`. Expect the **NEXUS · SUPER COMANDOS** St panel with
+   `PILHA n · FILA m` and the mnemonic list. Plain `Super+C` / `Super+V` in an app must keep
+   their normal copy/paste behavior (only one global chord is grabbed).
+2. With the command bar open, press `1` → `NEXUS · FILA 1 · PRÓX: …` badge appears at the top.
+   Repeat with `2`, `3` → badge shows `FILA 3`. `Esc` closes without side effects.
+3. With a non-empty Nexus stack, press `Super+;` then `n`. Expect exactly one inference step,
+   a `Passo ok · fila 2 · próximo: …` status chip, and badge `FILA 2`.
+4. Press `Super+;` then `d`. Expect the FIFO depth decreasing in the badge after each step
+   (the streaming panel, when enabled, labels steps `Fila 1/2 … 2/2`), a final
+   `Fila concluída` chip, and the badge disappearing when the FIFO empties.
+5. Press `Super+;` then `x` → Nexus top copied to the system clipboard (explicit export only).
+   Inference/enqueue paths must never change the system clipboard (CP-03).
+6. In Preferences, change *Tecla de comandos Super* and confirm the new chord opens the bar;
+   toggle *Distintivo da fila* off → badge hides on the next refresh.
+
+```
+<PASTE OUTPUT HERE>
+```

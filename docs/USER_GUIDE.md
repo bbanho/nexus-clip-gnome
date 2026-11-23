@@ -14,6 +14,35 @@ Nexus Clip maintains its own clipboard, independent of GNOME's desktop clipboard
 The extension does not synchronize them automatically. Import and export are explicit
 actions, so an inference result will not silently overwrite text you copied elsewhere.
 
+## The Super command bar (recommended)
+
+Press **`Super` + `;`** once. A small St panel (not a separate app window) opens with the live
+stack/FIFO depth and the next queued step. Then press **one key**:
+
+| Key | Action |
+|---|---|
+| `V` | Import the desktop clipboard and process it with AI |
+| `C` | Process the current Nexus top with AI |
+| `X` | Copy the Nexus top to the desktop clipboard (explicit export) |
+| `Q` | Enqueue the prompt of the configured `enqueue` shortcut |
+| `N` | Run the next FIFO step (result goes on top) |
+| `D` | Drain the whole FIFO, in order, showing `1/15 … 15/15` progress |
+| `Z` | Undo one stack item |
+| `H` | Open the visual history / queue / prompt panel |
+| `1`–`5` | Enqueue one of the first five ready-made prompt templates |
+| `Esc` | Close without doing anything |
+
+This is the natural-behavior path: only one global chord is grabbed, so ordinary
+`Super+C`/`Super+V` and typing are untouched. The direct `Alt`+`Super` shortcuts below remain
+available for people who prefer one-keystroke actions.
+
+### The queue badge
+
+While the FIFO has items, a purple badge stays at the top-left of the screen:
+`NEXUS · FILA 15 · PRÓX: Resumir … · pilha 7`. It updates after every enqueue and every
+completed step, and disappears when the queue empties. Disable it in Preferences →
+*Notificações e estado* → *Distintivo da fila* if you find it distracting.
+
 ## Default shortcuts
 
 | Default | Action | Result |

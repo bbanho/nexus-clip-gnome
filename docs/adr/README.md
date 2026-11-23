@@ -16,3 +16,4 @@ Decision → Consequences (see `docs/DEVELOPMENT.md` for workflow).
 | [0009](0009-no-gtk-in-shell.md) | Never create GTK widgets in the shell process | Accepted |
 | [0010](0010-result-nodes-on-stack.md) | Inference results are nodes on the Nexus stack | Accepted |
 | [0011](0011-visual-history-quiet-feedback.md) | Visual history, prompt templates, and quiet feedback | Accepted |
+| [0012](0012-super-leader-visible-fifo.md) | One Super leader for AI actions, and a visible FIFO | Accepted |
