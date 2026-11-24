@@ -5,30 +5,33 @@
 // meaning (typing, copy/paste, overview) and no extra global grabs are needed.
 // No gi:// imports, no I/O: exercised by `node --test`.
 
-import { canonicalAccel, isValidAccel, needsPrompt } from './shortcuts.js';
+import { canonicalAccel, isValidAccel, requiresPrompt } from './shortcuts.js';
 import { PROMPT_TEMPLATES } from './prompts.js';
 
 export const COMMAND_ACCEL_DEFAULT = '<Super>semicolon';
 
 /** Ordered command palette. `key` is the single key pressed after the leader. */
+// Motor-memory map: C collects (system clipboard -> Nexus), V writes (AI on
+// the Nexus top), X moves a copy out (Nexus -> system clipboard). Ctrl+C/V/X
+// stay with the desktop apps; only the Super leader enters this palette.
 export const COMMAND_KEYS = [
     {
-        key: 'v',
+        key: 'c',
         mode: 'push-process',
-        label: 'Importar clipboard + processar com IA',
-        hint: 'lê o clipboard do sistema',
+        label: 'Coletar clipboard + processar com IA',
+        hint: 'C · traz o clipboard do sistema para o Nexus',
     },
     {
-        key: 'c',
+        key: 'v',
         mode: 'process',
-        label: 'Processar topo do Nexus com IA',
-        hint: 'não toca no clipboard do sistema',
+        label: 'Escrever no topo com IA',
+        hint: 'V · processa o topo, não toca no clipboard do sistema',
     },
     {
         key: 'x',
         mode: 'copy-top',
-        label: 'Copiar topo do Nexus para o sistema',
-        hint: 'saída explícita (CP-03)',
+        label: 'Mover uma cópia do topo para o sistema',
+        hint: 'X · saída explícita (CP-03), mantém o item na pilha',
     },
     {
         key: 'q',
@@ -128,7 +131,8 @@ export function shortcutForCommand(command) {
         label: command.label,
         accel: '',
         mode: command.mode,
-        prompt: needsPrompt(command.mode)
+        // Only `enqueue` needs a prompt of its own; C/V borrow the FIFO.
+        prompt: requiresPrompt(command.mode)
             ? (PROMPT_TEMPLATES[0]?.prompt ?? '')
             : '',
     };
@@ -151,12 +155,14 @@ export function formatCommandHeader({ stackCount = 0, fifoCount = 0 } = {}) {
 export function formatQueueBadge({
     stackCount = 0,
     fifoCount = 0,
+    pipelineCount = 0,
     next = '',
     running = false,
 } = {}) {
-    if (fifoCount <= 0)
+    if (fifoCount <= 0 && pipelineCount <= 0)
         return '';
     const label = preview(next || 'sem rótulo');
     const state = running ? 'PROCESSANDO' : 'PRÓX';
-    return `NEXUS · FILA ${fifoCount} · ${state}: ${label}${running ? '' : ` · pilha ${stackCount}`}`;
+    const pipeline = pipelineCount > 0 ? ` · PIPELINE ${pipelineCount}` : '';
+    return `NEXUS · FILA ${fifoCount}${pipeline} · ${state}: ${label}${running ? '' : ` · pilha ${stackCount}`}`;
 }

@@ -9,9 +9,12 @@ import {
     migrateFromPresets,
     needsPrompt,
     parseShortcuts,
+    promptFromQueue,
     registrationList,
+    requiresPrompt,
     validateShortcuts,
 } from '../extension/lib/shortcuts.js';
+import { COMMAND_KEYS } from '../extension/lib/command-keys.js';
 
 test('canonicalAccel matches GTK modifier ordering', () => {
     assert.equal(canonicalAccel('<Super><Alt>v'), '<Alt><Super>v');
@@ -88,11 +91,11 @@ test('registrationList drops empty, duplicate, and malformed accelerators', () =
     );
 });
 
-test('validateShortcuts reports duplicates and empty prompts', () => {
+test('validateShortcuts reports duplicates and empty mandatory prompts', () => {
     const list = [
         { id: 'a', accel: '<Alt><Super>v', mode: 'process', prompt: 'p' },
         { id: 'b', accel: '<Alt><Super>v', mode: 'process', prompt: 'p' },
-        { id: 'c', accel: '<Alt><Super>c', mode: 'process', prompt: '   ' },
+        { id: 'c', accel: '<Alt><Super>q', mode: 'enqueue', prompt: '   ' },
         { id: 'd', accel: '', mode: 'copy-top', prompt: '' },
     ];
     const { errors, warnings } = validateShortcuts(list);
@@ -100,6 +103,17 @@ test('validateShortcuts reports duplicates and empty prompts', () => {
     assert.ok(errors.some(item => item.index === 1 && item.field === 'accel'));
     assert.ok(errors.some(item => item.index === 2 && item.field === 'prompt'));
     assert.ok(warnings.some(item => item.index === 3 && item.field === 'accel'));
+});
+
+test('process and push-process may borrow the FIFO prompt; enqueue may not', () => {
+    assert.equal(needsPrompt('process'), true);
+    assert.equal(requiresPrompt('process'), false);
+    assert.equal(promptFromQueue('process'), true);
+    assert.equal(requiresPrompt('push-process'), false);
+    assert.equal(promptFromQueue('push-process'), true);
+    assert.equal(requiresPrompt('enqueue'), true);
+    assert.equal(promptFromQueue('enqueue'), false);
+    assert.equal(requiresPrompt('import'), false);
 });
 
 test('validateShortcuts warns about GNOME-reserved combinations', () => {
@@ -129,8 +143,8 @@ test('defaultShortcuts binds the five core actions and leaves the rest unbound',
     assert.deepEqual(
         registrationList(list).map(item => [item.mode, item.accel]),
         [
-            ['push-process', '<Alt><Super>v'],
-            ['process', '<Alt><Super>c'],
+            ['push-process', '<Alt><Super>c'],
+            ['process', '<Alt><Super>v'],
             ['copy-top', '<Alt><Super>x'],
             ['history', '<Alt><Super>h'],
             ['pop', '<Alt><Super>z'],
@@ -140,6 +154,15 @@ test('defaultShortcuts binds the five core actions and leaves the rest unbound',
     const unbound = list.filter(item => !item.accel).map(item => item.mode);
     assert.deepEqual(unbound, ['import', 'enqueue', 'run-next', 'drain']);
     assert.ok(list.length <= MAX_SHORTCUTS);
+});
+
+test('direct defaults and command bar share the same C/V/X mnemonics', () => {
+    const direct = new Map(registrationList(defaultShortcuts()).map(item => [item.mode, item.accel]));
+    const bar = new Map(COMMAND_KEYS.map(item => [item.mode, item.key]));
+    for (const mode of ['push-process', 'process', 'copy-top']) {
+        assert.match(direct.get(mode), /^<Alt><Super>\w$/);
+        assert.equal(direct.get(mode).slice(-1), bar.get(mode), `${mode} mnemonic diverged`);
+    }
 });
 
 test('import and history modes do not require a prompt', () => {

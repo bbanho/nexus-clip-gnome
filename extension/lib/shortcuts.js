@@ -23,25 +23,33 @@ export const MODES = [
     'provenance',
 ];
 
+// Keep these short: they render inside a narrow ComboRow popup, where long
+// labels get ellipsized and the action becomes unreadable.
 export const MODE_LABELS = {
-    'push-process': 'Importar do sistema + processar',
-    'process': 'Processar topo do Nexus',
-    'copy-top': 'Copiar topo do Nexus para o sistema',
+    'push-process': 'Coletar + processar',
+    'process': 'Escrever topo (IA)',
+    'copy-top': 'Mover topo → sistema',
     'enqueue': 'Enfileirar prompt',
-    'run-next': 'Rodar próximo da fila',
+    'run-next': 'Rodar próximo',
     'drain': 'Rodar fila inteira',
-    'pop': 'Desfazer (voltar um item)',
-    'show': 'Mostrar pilha e fila',
-    'import': 'Importar do sistema (sem processar)',
-    'history': 'Abrir histórico visual',
-    'audit-import': 'Importar texto com magic number auditado',
-    'mirror-import': 'Importar e espelhar no clipboard do sistema',
-    'status': 'Visão geral das pilhas',
-    'provenance': 'Gravar UUID e vetor característico',
+    'pop': 'Desfazer',
+    'show': 'Mostrar pilha/fila',
+    'import': 'Importar do sistema',
+    'history': 'Histórico visual',
+    'audit-import': 'Importar auditado',
+    'mirror-import': 'Importar + espelhar',
+    'status': 'Visão geral',
+    'provenance': 'Gravar proveniência',
 };
 
 const MODE_SET = new Set(MODES);
+
+// Modes that *use* a prompt (the editor stays visible in prefs)…
 const PROMPT_MODES = new Set(['push-process', 'process', 'enqueue']);
+// …but only `enqueue` cannot work without one. `push-process`/`process` may
+// borrow the next prompt from the FIFO, which is the default flow now.
+const REQUIRED_PROMPT_MODES = new Set(['enqueue']);
+const QUEUE_PROMPT_MODES = new Set(['push-process', 'process']);
 
 export const DEFAULT_PROMPT =
     'Corrija o português, mantendo o sentido e o tom.';
@@ -85,6 +93,16 @@ export function modeLabel(mode) {
 
 export function needsPrompt(mode) {
     return PROMPT_MODES.has(mode);
+}
+
+/** A prompt is mandatory (cannot fall back to the FIFO). */
+export function requiresPrompt(mode) {
+    return REQUIRED_PROMPT_MODES.has(mode);
+}
+
+/** The action may borrow the next prompt from the FIFO when its own is empty. */
+export function promptFromQueue(mode) {
+    return QUEUE_PROMPT_MODES.has(mode);
 }
 
 export function makeId(prefix = 'sc') {
@@ -255,7 +273,7 @@ export function validateShortcuts(list) {
             }
         }
 
-        if (needsPrompt(shortcut.mode) && !String(shortcut.prompt || '').trim()) {
+        if (requiresPrompt(shortcut.mode) && !String(shortcut.prompt || '').trim()) {
             errors.push({ index, field: 'prompt', message: 'Prompt vazio' });
         }
     });
@@ -267,21 +285,23 @@ export function defaultShortcuts() {
     return [
         {
             id: 'sc_default_push_process',
-            label: 'Importar e processar',
-            accel: '<Alt><Super>v',
+            label: 'Coletar clipboard + processar',
+            accel: '<Alt><Super>c',
             mode: 'push-process',
-            prompt: DEFAULT_PROMPT,
+            // Empty on purpose: the prompt comes from the FIFO. Set one here
+            // only if this shortcut should always run a fixed prompt.
+            prompt: '',
         },
         {
             id: 'sc_default_process',
-            label: 'Processar topo',
-            accel: '<Alt><Super>c',
+            label: 'Escrever/processar topo',
+            accel: '<Alt><Super>v',
             mode: 'process',
-            prompt: DEFAULT_PROMPT,
+            prompt: '',
         },
         {
             id: 'sc_default_copy_top',
-            label: 'Copiar topo para o sistema',
+            label: 'Mover topo para o sistema (exportar)',
             accel: '<Alt><Super>x',
             mode: 'copy-top',
             prompt: '',
@@ -357,15 +377,15 @@ export function migrateFromPresets(rawPresets) {
     const list = [
         {
             id: 'sc_migrated_push_process',
-            label: 'Importar e processar',
-            accel: '<Alt><Super>v',
+            label: 'Coletar clipboard + processar',
+            accel: '<Alt><Super>c',
             mode: 'push-process',
             prompt: firstPrompt,
         },
         {
             id: 'sc_migrated_process',
-            label: 'Processar pilha',
-            accel: '<Alt><Super>c',
+            label: 'Escrever/processar topo',
+            accel: '<Alt><Super>v',
             mode: 'process',
             prompt: firstPrompt,
         },

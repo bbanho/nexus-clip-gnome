@@ -20,7 +20,7 @@ test('command leader is a single Super chord with a real key', () => {
 test('command keys cover every action with a unique mnemonic', () => {
     assert.deepEqual(
         COMMAND_KEYS.map(item => item.key),
-        ['v', 'c', 'x', 'q', 'n', 'd', 'z', 'h', 'a', 'm', 's', 'u']
+        ['c', 'v', 'x', 'q', 'n', 'd', 'z', 'h', 'a', 'm', 's', 'u']
     );
     assert.equal(new Set(COMMAND_KEYS.map(item => item.mode)).size, COMMAND_KEYS.length);
     assert.equal(new Set(COMMAND_KEYS.map(item => item.key)).size, COMMAND_KEYS.length);
@@ -34,8 +34,19 @@ test('normalizeCommandAccel canonicalizes and rejects unusable values', () => {
     assert.equal(normalizeCommandAccel('<Super>semicolon'), COMMAND_ACCEL_DEFAULT);
 });
 
+test('motor-memory mnemonics map C=collect, V=write, X=move', () => {
+    assert.equal(commandForChar('C').item.mode, 'push-process');
+    assert.equal(commandForChar('v').item.mode, 'process');
+    assert.equal(commandForChar('X').item.mode, 'copy-top');
+    // The desktop Ctrl+C/V/X muscle memory is never grabbed by the palette.
+    assert.ok(COMMAND_KEYS.every(item => !/<Control>/.test(item.key)));
+    assert.match(COMMAND_KEYS.find(item => item.key === 'c').hint, /^C ·/);
+    assert.match(COMMAND_KEYS.find(item => item.key === 'v').hint, /^V ·/);
+    assert.match(COMMAND_KEYS.find(item => item.key === 'x').hint, /^X ·/);
+});
+
 test('commandForChar resolves actions and template digits', () => {
-    assert.equal(commandForChar('V').item.mode, 'push-process');
+    assert.equal(commandForChar('c').item.mode, 'push-process');
     assert.equal(commandForChar('d').item.mode, 'drain');
     assert.equal(commandForChar('3').item.prompt, templateCommands()[2].prompt);
     assert.equal(commandForChar('9'), null);
@@ -65,6 +76,10 @@ test('synthetic shortcuts inherit a prompt only for prompt modes', () => {
 
     const copy = shortcutForCommand(COMMAND_KEYS.find(item => item.mode === 'copy-top'));
     assert.equal(copy.prompt, '');
+
+    // C/V are queue-driven: an empty prompt means "use the next FIFO prompt".
+    const collect = shortcutForCommand(COMMAND_KEYS.find(item => item.mode === 'push-process'));
+    assert.equal(collect.prompt, '');
 });
 
 test('queue badge is hidden when the FIFO is empty', () => {
@@ -87,6 +102,20 @@ test('queue badge exposes depth, next step and running state', () => {
     assert.match(running, /FILA 14/);
     assert.match(running, /PROCESSANDO/);
     assert.doesNotMatch(running, /PRÓX/);
+});
+
+test('queue badge counts the serialized inference pipeline independently', () => {
+    const badge = formatQueueBadge({
+        stackCount: 3,
+        fifoCount: 0,
+        pipelineCount: 2,
+        next: 'Coletar',
+        running: true,
+    });
+    assert.match(badge, /FILA 0/);
+    assert.match(badge, /PIPELINE 2/);
+    assert.match(badge, /PROCESSANDO/);
+    assert.notEqual(badge, '');
 });
 
 test('command header reports both stacks without ambiguity', () => {
