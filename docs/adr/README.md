@@ -3,6 +3,10 @@
 Short, append-only records of decisions that shape this project. Format: Context →
 Decision → Consequences (see `docs/DEVELOPMENT.md` for workflow).
 
+The extended reasoning (session notes and validation runbook) lives in the
+sibling meta-repo at `../nexus-meta/etc/nexus-clip/`. These ADRs are the
+normative copy used by `make check`; that directory is the reasoning trail.
+
 | ADR | Title | Status |
 |-----|-------|--------|
 | [0001](0001-dedicated-repo.md) | Dedicated repo `nexus-clip-gnome` | Accepted |
