@@ -1,0 +1,22 @@
+id: no-gi-in-pure-modules
+language: js
+severity: error
+message: >-
+  This module is part of the pure/Node-testable layer and must not import
+  gi:// (GJS-only). Keep logic here free of GNOME imports so `node --test`
+  can exercise it (see docs/ARCHITECTURE.md module map).
+rule:
+  kind: import_statement
+  has:
+    kind: string
+    regex: 'gi://'
+files:
+  - extension/lib/prompts.js
+  - extension/lib/history-core.js
+  - extension/lib/notify-policy.js
+  - extension/lib/store-core.js
+  - extension/lib/store-io.js
+  - extension/lib/shortcuts.js
+  - extension/lib/config.js
+  - extension/lib/v1core.js
+  - extension/lib/sse.js

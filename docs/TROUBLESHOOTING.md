@@ -27,7 +27,7 @@ process**. GTK opened its own Wayland connection and round-tripped back to the c
 that was blocked inside the keybinding handler — a deadlock.
 
 **Fix:** the extension no longer imports or instantiates GTK in the shell process. The
-stack viewer and streaming panel are St/Clutter actors (`lib/hud.js`, ADR-0009). Prefs
+visual history, streaming panel and status chip are St/Clutter actors (`lib/hud.js`, ADR-0009). Prefs
 still use GTK, but they run in a separate process.
 
 If a build still freezes, check `journalctl` for `Gtk` / `selector` and reinstall:
@@ -42,10 +42,11 @@ make check && make install
 That is by design: **Nexus has its own clipboard** (the stack top). Inference never writes
 the system clipboard. To export:
 
-- bind the **Copiar topo do Nexus para o sistema** action to a key in prefs, or
-- bind **Mostrar pilha e fila**, select an item, and press `Enter`.
+- press **`Alt` + `Super` + `X`** (**Copiar topo do Nexus para o sistema**), or
+- press **`Alt` + `Super` + `H`** to open the visual history, select an item, and press
+  `Enter`.
 
-The system clipboard is read only by **Importar do sistema + processar**.
+The system clipboard is read only by **Importar e processar** and **Importar sem processar**.
 
 ## "Clipboard do sistema vazio" when I press Importar e processar
 

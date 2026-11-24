@@ -1,0 +1,5 @@
+# ast-grep project config — structural invariant gate.
+# Run with `ast-grep scan` (or `make structural`). Complements the regex-based
+# tests/shell-boundary.test.js with AST-level checks. See docs/CRITICAL_POINTS.md.
+ruleDirs:
+  - rules

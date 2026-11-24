@@ -14,15 +14,58 @@ Nexus Clip maintains its own clipboard, independent of GNOME's desktop clipboard
 The extension does not synchronize them automatically. Import and export are explicit
 actions, so an inference result will not silently overwrite text you copied elsewhere.
 
+## The Super command bar (recommended)
+
+Press **`Super` + `;`** once. A small St panel (not a separate app window) opens with the live
+stack/FIFO depth and the next queued step. Then press **one key**:
+
+| Key | Action | Muscle memory |
+|---|---|---|
+| `C` | **Collect** the desktop clipboard and process it with AI | `Ctrl+C`: gather text into the clipboard — here, into Nexus |
+| `V` | **Write** AI output onto the current Nexus top | `Ctrl+V`: put text where you're working — here, the Nexus top |
+| `X` | **Move** a copy of the Nexus top to the desktop clipboard (explicit export) | `Ctrl+X`: take it somewhere else — here, out to the system |
+| `Q` | Enqueue the prompt of the configured `enqueue` shortcut |
+| `N` | Run the next FIFO step (result goes on top) |
+| `D` | Drain the whole FIFO, in order, showing `1/15 … 15/15` progress |
+| `Z` | Undo one stack item |
+| `H` | Open the visual history / queue / prompt panel |
+| `A` | Import audited text (requires the `NEXUS-TEXT-1` magic number; Nexus only) |
+| `M` | Import **and mirror** to the desktop clipboard (explicit opt-in) |
+| `S` | Show a quiet overview: stack / queue / history counts and next step |
+| `U` | Record provenance for the top item (UUID + hash + counters, no text) |
+| `1`–`5` | Enqueue one of the first five ready-made prompt templates |
+| `Esc` | Close without doing anything |
+
+`V` and `D` are the "write to top" and "write all" operations; the queue is drained in
+FIFO order and the badge shrinks after each step. `X` moves a **copy** out — it does not pop
+the stack, so `Z` remains the undo. `A` is the text-only path: copy text that
+starts with a line containing exactly `NEXUS-TEXT-1`, then press `A`. Anything binary,
+executable-looking, empty, or larger than 64 KiB is refused before inference. `M` is the only
+new action that writes the desktop clipboard; use it only when you want both copies.
+
+This is the natural-behavior path: only one global chord is grabbed, so ordinary
+`Super+C`/`Super+V` and typing are untouched. The direct `Alt`+`Super` shortcuts below remain
+available for people who prefer one-keystroke actions.
+
+### The queue badge
+
+While the FIFO has items, a purple badge stays at the top-left of the screen:
+`NEXUS · FILA 15 · PRÓX: Resumir … · pilha 7`. It updates after every enqueue and every
+completed step, and disappears when the queue empties. Disable it in Preferences →
+*Notificações e estado* → *Distintivo da fila* if you find it distracting.
+
 ## Default shortcuts
 
 | Default | Action | Result |
 |---|---|---|
-| `Alt` + `Super` + `V` | **Importar e processar** | Reads plain text from the desktop clipboard, adds it to Nexus if it differs from the current top, then runs inference with this shortcut's prompt. |
-| `Alt` + `Super` + `C` | **Processar pilha** | Runs inference on the current Nexus top and pushes a new result node. |
+| `Alt` + `Super` + `C` | **Coletar clipboard + processar** | Reads plain text from the desktop clipboard, adds it to Nexus if it differs from the current top, then runs inference with this shortcut's prompt. |
+| `Alt` + `Super` + `V` | **Escrever/processar topo** | Runs inference on the current Nexus top and pushes a new result node. |
+| `Alt` + `Super` + `X` | **Mover topo para o sistema** | Explicitly exports a copy of the Nexus top to the desktop clipboard; the item stays on the stack. |
+| `Alt` + `Super` + `H` | **Histórico visual** | Opens the searchable history panel (see below). |
+| `Alt` + `Super` + `Z` | **Desfazer** | Pops the newest Nexus item; the previous item becomes the top. |
 
-The export shortcut is intentionally **unbound** by default. Assign a key to
-**Copiar topo do Nexus para o sistema** in Preferences, or use the HUD's explicit export.
+`import` (import without processing), `enqueue`, `run-next`, and `drain` ship as **unbound**
+templates. Assign a key in Preferences only if you use them.
 
 ## Available actions
 
@@ -44,11 +87,55 @@ Add or remove entries in **Atalhos e prompts**; up to 12 entries can be configur
 | **Rodar próximo da fila** | No | Run the oldest queued prompt against the current Nexus top. Consume it only after success. |
 | **Rodar fila inteira** | No | Process queued prompts in order, saving every successful step. On failure, completed work remains saved and the failed/remaining work stays queued. |
 | **Desfazer (voltar um item)** | No | Pop the newest stack item. The previous item becomes the Nexus top. |
-| **Mostrar pilha e fila** | No | Open the in-shell viewer. Use `↑`/`↓` or `k`/`j` to select, `Enter` to export the selected stack item, and `Esc`/`q` to close. |
+| **Importar do sistema (sem processar)** | No | Read the desktop clipboard into the Nexus stack without calling the model. |
+| **Mostrar pilha e fila** | No | Open the visual history on the Pilha tab. |
+| **Abrir histórico visual** | No | Open the visual history on the Histórico tab. |
+| **Importar texto com magic number auditado** | No | Read the desktop clipboard, require `NEXUS-TEXT-1\n`, strip the marker and push the payload to Nexus. Never writes the desktop clipboard. |
+| **Importar e espelhar no clipboard do sistema** | No | Read the desktop clipboard, push to Nexus **and** write the same text back to the desktop clipboard. Explicit opt-in export. |
+| **Visão geral das pilhas** | No | Status chip with stack / queue / history counts and the next queued label. No content in system notifications. |
+| **Gravar UUID e vetor característico** | No | Record a deterministic UUID, content hash and counter vector for the current top. No prompt or text is sent to the KV/harness boundary. |
 
 An action that requires a prompt will not start if its prompt is empty. If an inference is
 already running, another action reports that Nexus is busy instead of starting a second
 request.
+
+## Visual history
+
+`Alt` + `Super` + `H` (or the **Mostrar pilha e fila** action) opens a searchable panel with
+four tabs:
+
+- **Pilha** — the Nexus LIFO stack (inputs and results, newest first).
+- **Histórico** — the append-only inference log, newest first.
+- **Fila** — the queued prompts.
+- **Prompts** — the built-in prompt template library.
+
+Keys: `↑`/`↓` (or `j`/`k`) select · `1`–`4` or `Tab` switch tabs · `/` focuses the search box ·
+`Enter` copies the selected item to the **system clipboard** (explicit export) ·
+`Ctrl`+`Enter` reuses the selected text as a new Nexus input · `Del` removes a stack/queue
+item · `Esc` closes. On the **Prompts** tab, `Enter` enqueues the template into the FIFO
+queue. The footer shows the available actions as buttons for mouse use.
+
+## Prompt templates
+
+A library of ready-made prompts (corrigir, resumir, traduzir, explicar código, mensagem de
+commit, etc.) is available in two places:
+
+- **Preferences → Atalhos e prompts**: expand a shortcut and pick a *Modelo de prompt* to
+  fill its prompt editor in one click.
+- **Visual history → Prompts tab**: select a template and press `Enter` to enqueue it.
+
+## Notifications and status
+
+Each operation shows a small, transient **status chip** naming what ran (e.g.
+`✓ Processar topo · pilha 3`). System notifications are controlled by
+**Preferences → Notificações e estado**:
+
+- **Só erros (recomendado)** — default; routine successes stay on the status chip and in the
+  history log, so you always know what happened without notification spam.
+- **Todas as operações** — a system notification for every action.
+- **Silencioso** — no system notifications (the status chip still shows if enabled).
+
+You can toggle the status chip and set how long it stays visible (1–15 seconds).
 
 ## Customize a shortcut
 
@@ -77,6 +164,12 @@ Stack, FIFO, and history are saved locally under
 key are held in GNOME Settings (dconf). Imported text, prompts, and model responses are
 sent to the configured endpoint for inference. See [Configuration](CONFIGURATION.md) for
 the file and setting details.
+
+Copy-on-write is ephemeral by default: a clipboard read or an inference step creates a new
+node and never mutates its source; importing or capturing provenance is the explicit opt-in
+that persists a record. A provenance record stores the local origin item id with a UUID,
+a hash and counters — never the source text or prompt. The same rule applies to the main
+harness: only UUIDs, hashes and counters may cross that boundary.
 
 ## Recovering from common issues
 

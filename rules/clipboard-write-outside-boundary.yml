@@ -1,0 +1,15 @@
+id: clipboard-write-outside-boundary
+language: js
+severity: error
+message: >-
+  Writing the system clipboard is only allowed in the two explicit-export
+  paths (CP-03): extension/lib/hud.js (viewer Enter/Copiar) and
+  extension/lib/actions.js (writeClipboard used by copy-top). Inference and
+  import must never write the system clipboard.
+rule:
+  pattern: St.Clipboard.get_default().set_text($$$)
+files:
+  - extension/**/*.js
+ignores:
+  - extension/lib/hud.js
+  - extension/lib/actions.js

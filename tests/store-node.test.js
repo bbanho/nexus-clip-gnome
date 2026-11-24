@@ -10,8 +10,10 @@ import {
     dataDir,
     emptyState,
     loadFifo,
+    loadHistory,
     loadStack,
     push,
+    removeNode,
     saveFifo,
     saveStack,
 } from './helpers/store-node.js';
@@ -103,4 +105,49 @@ test('appendHistory appends one JSON object per line and clearHistory empties it
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
+});
+
+test('loadHistory returns newest-first entries and honors the limit', () => {
+    const dir = tmpDir();
+    try {
+        appendHistory(dir, { id: 'a', text: 'one', ts: 1 });
+        appendHistory(dir, { id: 'b', text: 'two', ts: 2 });
+        appendHistory(dir, { id: 'c', text: 'three', ts: 3 });
+
+        const all = loadHistory(dir);
+        assert.deepEqual(all.map(entry => entry.id), ['c', 'b', 'a']);
+
+        const limited = loadHistory(dir, { limit: 2 });
+        assert.deepEqual(limited.map(entry => entry.id), ['c', 'b']);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('loadHistory tolerates a missing or corrupt log', () => {
+    const dir = tmpDir();
+    try {
+        assert.deepEqual(loadHistory(dir), []);
+        fs.writeFileSync(path.join(dir, 'history.jsonl'), '{bad\n{"id":"ok","text":"x"}\n', 'utf8');
+        const entries = loadHistory(dir);
+        assert.equal(entries.length, 1);
+        assert.equal(entries[0].id, 'ok');
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('removeNode deletes a single item by id and leaves the rest intact', () => {
+    let state = emptyState();
+    state = push(state, 'A');
+    state = push(state, 'B');
+    const targetId = state.items[1].id; // 'A'
+
+    const removed = removeNode(state, targetId);
+    assert.equal(removed.item.text, 'A');
+    assert.deepEqual(removed.state.items.map(item => item.text), ['B']);
+
+    const missing = removeNode(state, 'does-not-exist');
+    assert.equal(missing.item, null);
+    assert.equal(missing.state.items.length, 2);
 });

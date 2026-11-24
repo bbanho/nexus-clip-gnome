@@ -3,6 +3,10 @@
 Short, append-only records of decisions that shape this project. Format: Context →
 Decision → Consequences (see `docs/DEVELOPMENT.md` for workflow).
 
+The extended reasoning (session notes and validation runbook) lives in the
+sibling meta-repo at `../nexus-meta/etc/nexus-clip/`. These ADRs are the
+normative copy used by `make check`; that directory is the reasoning trail.
+
 | ADR | Title | Status |
 |-----|-------|--------|
 | [0001](0001-dedicated-repo.md) | Dedicated repo `nexus-clip-gnome` | Accepted |
@@ -15,3 +19,8 @@ Decision → Consequences (see `docs/DEVELOPMENT.md` for workflow).
 | [0008](0008-configurable-shortcuts-and-clipboard-boundary.md) | Configurable shortcuts + explicit system-clipboard boundary | Accepted |
 | [0009](0009-no-gtk-in-shell.md) | Never create GTK widgets in the shell process | Accepted |
 | [0010](0010-result-nodes-on-stack.md) | Inference results are nodes on the Nexus stack | Accepted |
+| [0011](0011-visual-history-quiet-feedback.md) | Visual history, prompt templates, and quiet feedback | Accepted |
+| [0012](0012-super-leader-visible-fifo.md) | One Super leader for AI actions, and a visible FIFO | Accepted |
+| [0013](0013-audited-text-and-safe-provenance.md) | Audited text intake, explicit mirroring, and leak-free provenance | Accepted |
+| [0014](0014-motor-memory-c-v-x.md) | Motor-memory mnemonics: C collects, V writes, X moves | Accepted |
+| [0015](0015-queue-by-nature-session-cache.md) | Queue by nature (opt-out) and session cache | Accepted |

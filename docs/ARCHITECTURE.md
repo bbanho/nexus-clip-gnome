@@ -1,6 +1,6 @@
 # Architecture — Nexus Clip GNOME Extension
 
-A GNOME Shell 45–50 extension (ESM / GJS) that gives Nexus its **own clipboard**: a LIFO
+A GNOME Shell 45–51 extension (ESM / GJS) that gives Nexus its **own clipboard**: a LIFO
 stack of inputs/results, a FIFO of prompts, user-defined shortcuts with per-shortcut
 prompts, and inference over an OpenAI-compatible `/v1` endpoint.
 
@@ -16,7 +16,7 @@ never creates GTK widgets (ADR-0009); in-shell UI is built with St/Clutter (ADR-
 
 ## 1. Runtime & constraints
 
-- **GNOME Shell 45–50**, developed/validated on **50.3 Wayland**. ESM is mandatory
+- **GNOME Shell 45–51**, developed/validated on **50.3 and 51.1 Wayland**. ESM is mandatory
   (GNOME 45+); legacy `imports.gi` loading is not used.
 - **GJS** with `gi://Soup?version=3.0` (libsoup3), `gi://St`, `gi://Clutter`, and the
   GNOME Shell resource modules. Prefs use `gi://Gtk?version=4.0` / `gi://Adw?version=1`
@@ -34,8 +34,8 @@ never creates GTK widgets (ADR-0009); in-shell UI is built with St/Clutter (ADR-
 
 ```
 extension/
-├── metadata.json              # uuid nexus-clip@bbanho, schema, shell-version 45..50
-├── extension.js               # Extension: enable/disable + dynamic keybinding slots
+├── metadata.json              # uuid nexus-clip@bbanho, schema, shell-version 45..51
+├── extension.js               # Extension: enable/disable + action slots + Super command slot
 ├── prefs.js                   # ExtensionPreferences: API / shortcuts / Nexus / help
 ├── schemas/
 │   └── org.gnome.shell.extensions.nexus-clip.gschema.xml
@@ -43,12 +43,16 @@ extension/
     ├── actions.js             # orchestration: import/process/export/FIFO/HUD
     ├── config.js              # GSettings glue: shortcut migration/save, API config
     ├── shortcuts.js           # PURE: modes, canonical accelerators, validation, defaults
-    ├── hud.js                 # St/Clutter stack viewer + live streaming panel
+    ├── prompts.js             # PURE: built-in prompt template library + search
+    ├── history-core.js        # PURE: parse/filter history.jsonl (newest-first, sanitized)
+    ├── notify-policy.js       # PURE: notification policy (errors/all/silent) + status format
+    ├── command-keys.js        # PURE: Super command palette, badge/header formatting
+    ├── hud.js                 # St/Clutter visual history + command bar + queue badge + chip
     ├── v1client.js            # HTTP: chat() (non-stream) and stream() (SSE)
     ├── v1core.js              # PURE: buildMessages / buildPayload / parseCompletion
     ├── sse.js                 # PURE: createSseParser + createUtf8Decoder
-    ├── store-core.js          # PURE: LIFO/FIFO semantics, node shape, schemaVersion
-    ├── store-io.js            # serialization over an injected file adapter
+    ├── store-core.js          # PURE: LIFO/FIFO semantics, node shape, removeNode, schemaVersion
+    ├── store-io.js            # serialization over an injected file adapter (+ loadHistory)
     └── store.js               # GJS/Gio adapter (shell + prefs)
 
 tests/
@@ -58,6 +62,12 @@ tests/
 ├── store-node.test.js
 ├── shortcuts.test.js
 ├── config.test.js
+├── prompts.test.js
+├── history-core.test.js
+├── notify-policy.test.js
+├── command-keys.test.js
+├── shell-boundary.test.js
+├── schema.test.js
 ├── v1core.test.js
 ├── sse.test.js
 ├── gjs-store-smoke.mjs
@@ -67,16 +77,20 @@ tests/
 | Module | Responsibility | Testable in Node? |
 |--------|----------------|-------------------|
 | `shortcuts.js` | Shortcut schema, canonicalization, defaults/migration, validation | ✅ pure |
+| `prompts.js` | Built-in prompt template library + search | ✅ pure |
+| `history-core.js` | Parse/filter `history.jsonl` (newest-first, sanitized) | ✅ pure |
+| `notify-policy.js` | Notification policy + status formatting | ✅ pure |
+| `command-keys.js` | Command palette map, accelerator normalization, queue badge text | ✅ pure |
 | `config.js` | GSettings read/write, migration, registration signature | ✅ fake settings |
-| `store-core.js` | LIFO/FIFO semantics, node shape, clamping | ✅ pure |
-| `store-io.js` | JSON/JSONL serialization over injected primitives | ✅ via adapters |
+| `store-core.js` | LIFO/FIFO semantics, node shape, `removeNode`, clamping | ✅ pure |
+| `store-io.js` | JSON/JSONL serialization over injected primitives (+ `loadHistory`) | ✅ via adapters |
 | `store-node.js` (in `tests/helpers/`) | Node filesystem adapter | ✅ |
 | `v1core.js` | Payload/message building + completion parsing | ✅ pure |
 | `sse.js` | SSE framing + incremental UTF-8 decoding | ✅ pure |
 | `store.js` | Gio persistence adapter | ⚠️ GJS smoke |
 | `v1client.js` | Network I/O (libsoup3), cancellable + timeout | ⚠️ GJS smoke |
-| `hud.js` | St/Clutter stack viewer + streaming panel | ⚠️ shell UI |
-| `actions.js` | Orchestration (`St.Clipboard`, notifications, busy guard) | ⚠️ shell only |
+| `hud.js` | St/Clutter visual history, command bar, queue badge, streaming panel, status chip | ⚠️ shell UI |
+| `actions.js` | Orchestration (`St.Clipboard`, feedback policy, busy guard) | ⚠️ shell only |
 | `prefs.js` | Preferences UI (GTK/Adw in a separate process) | ⚠️ manual |
 
 **Principle:** all *logic* lives in pure modules tested by `node --test`; GJS/UI modules
@@ -94,16 +108,23 @@ flowchart LR
   D --> E[registrationList]
   E --> F[write hotkey-slot-N + addKeybinding]
   F --> G[shell keypress → runById]
+  N[command-accel] --> O[hotkey-command + addKeybinding]
+  O --> P[Super leader → openCommandBar → single-key dispatch]
+  Q[changed::queue-badge] --> R[refreshQueueBadge]
   H[changed::shortcuts] --> I{signature changed?}
   I -- no --> G
   I -- yes --> J[removeBindings]
   J --> E
-  K[Extension.disable] --> L[removeBindings + destroy actions]
+  K[Extension.disable] --> L[removeBindings + removeCommandBinding + destroy actions]
 ```
 
 - `enable()` builds the action set and registers one shell keybinding per **registration
-  entry** (non-empty, de-duplicated accelerator), using schema slots
-  `hotkey-slot-0..11`.
+  entry** (non-empty, de-duplicated accelerator), using schema slots `hotkey-slot-0..11`.
+  It also registers **one** separate leader binding (`command-accel` → `hotkey-command`) that
+  opens the keyboard command bar, so no ordinary `Super+letter` is grabbed.
+- `createActions()` mirrors the FIFO into a persistent `getQueueBadge()` actor after every
+  mutation; the badge is hidden while the FIFO is empty. The command bar and badge are St
+  actors and are closed on `disable()`.
 - `changed::shortcuts` re-grabs only when the `(id, accel)` signature changes. Prompt and
   label edits are picked up lazily: the handler resolves the shortcut **by id** from
   current settings on every keypress.
@@ -115,7 +136,7 @@ flowchart LR
 
 ## 4. Data flow
 
-### 4.1 Import + process (`push-process`, `<Alt><Super>v`)
+### 4.1 Collect + process (`push-process`, `<Alt><Super>c`)
 
 ```mermaid
 sequenceDiagram
@@ -125,7 +146,7 @@ sequenceDiagram
   participant St as store (stack.json)
   participant V as v1client
   participant G as /v1 gateway
-  U->>S: press <Alt><Super>v
+  U->>S: press <Alt><Super>c
   S->>C: get_text(CLIPBOARD) (3 s timeout)
   C-->>S: text
   S->>St: loadStack; push input node unless it equals the top
@@ -139,7 +160,7 @@ sequenceDiagram
   Note over S,C: system clipboard is NOT written
 ```
 
-### 4.2 Process the Nexus top (`process`, `<Alt><Super>c`)
+### 4.2 Write to the Nexus top (`process`, `<Alt><Super>v`)
 
 ```mermaid
 sequenceDiagram
@@ -147,7 +168,7 @@ sequenceDiagram
   participant S as actions.doProcess
   participant St as store (stack.json)
   participant V as v1client
-  U->>S: press <Alt><Super>c
+  U->>S: press <Alt><Super>v
   S->>St: loadStack + peek
   alt stack empty
     S-->>U: notify("Pilha do Nexus vazia")
@@ -159,11 +180,11 @@ sequenceDiagram
   end
 ```
 
-### 4.3 Export (`copy-top`, unbound by default)
+### 4.3 Export (`copy-top`, `<Alt><Super>x`)
 
 `copy-top` reads the Nexus top and calls `St.Clipboard.set_text()` once. It is the only
-non-HUD action that writes the system clipboard. The stack viewer's `Enter` does the same
-for the selected row. No result is exported implicitly.
+non-HUD action that writes the system clipboard. The visual history's `Enter` (or *Copiar*
+button) does the same for the selected row. No result is exported implicitly.
 
 ### 4.4 FIFO: enqueue / run-next / drain
 
@@ -183,20 +204,29 @@ flowchart LR
   preserves completed steps and the remaining queue.
 - Each step is chained: the result of step *n* is the input of step *n+1*.
 
-### 4.5 Undo (`pop`) and viewer (`show`)
+### 4.5 Undo (`pop`), import (`import`) and visual history (`show` / `history`)
 
 - `pop` removes the newest node. The next node becomes the Nexus clipboard. The system
   clipboard is untouched.
-- `show` opens the St viewer: ↑/↓ (or `j`/`k`) select, `Enter` copies the selected item
-  to the system clipboard, `Esc`/`q` closes. It is read-only with respect to Nexus state.
+- `import` reads the desktop clipboard into the Nexus stack **without** calling the model
+  (and never writes the system clipboard).
+- `show` / `history` open the searchable, tabbed visual history (Pilha / Histórico / Fila /
+  Prompts). `↑`/`↓` (or `j`/`k`) select, `1`–`4`/`Tab` switch tabs, `/` focuses search,
+  `Enter` exports the selected item to the system clipboard, `Ctrl+Enter` reuses it as a
+  Nexus input, `Del` removes a stack/queue item, `Esc`/`q` closes. On the Prompts tab,
+  `Enter` enqueues a template into the FIFO. Mutations go through `refresh()` and the store,
+  so the panel always reflects persisted state.
 
-### 4.6 Busy guard, cancellation, errors
+### 4.6 Busy guard, cancellation, errors, feedback
 
-- Only one action runs at a time. A second keypress while busy notifies "Ocupado".
+- Only one action runs at a time. A second keypress while busy reports "Ocupado".
 - Each inference creates a `Gio.Cancellable`; `disable()` cancels it.
 - `v1client` applies the configured `request-timeout`; clipboard reads have a 3 s guard.
-- Errors are mapped to friendly notifications (gateway offline, 401/403, 404, 5xx,
-  timeout, cancellation) and never escape the shell's key handler.
+- Errors are mapped to friendly messages (gateway offline, 401/403, 404, 5xx, timeout,
+  cancellation) and never escape the shell's key handler.
+- Feedback follows `notify-policy.js`: every operation updates a transient **status chip**
+  (when `status-chip` is on) and the history log; a **system notification** fires only per
+  `notify-level` (`errors` by default, `all`, or `silent`).
 
 ---
 
@@ -244,6 +274,18 @@ One JSON object per line:
 ```json
 { "id": "res_...", "parentId": "item_...", "text": "...", "ts": 0, "prompt": "...", "mode": "process", "label": "..." }
 ```
+
+`store-io.loadHistory` reads the tail (clamped to `history-limit`), parses newest-first and
+sanitizes each line (`history-core.parseHistory`), so a malformed entry degrades safely
+instead of crashing the visual history (CP-16).
+
+**Recentes view (read-only projection).** `history-core.recentClips(entries)` sorts by `ts`
+descending (stable tie-break) and collapses *identical payloads* (`text`/`prompt`/`uuid`)
+into one row with `count`. It runs entirely inside the shell process and writes nothing:
+the log remains append-only and no result is deduplicated in storage (CP-06). The HUD opens
+the Histórico tab in this mode and toggles to raw file order with `R`. Cost is O(n log n) for
+the timestamp sort plus O(n) for Map grouping — bounded upstream by `history-limit` (200).
+Search also matches `uuid`/`hash` (boundary-safe tokens); numeric vectors are never searched.
 
 ### Tree-readiness (future)
 
@@ -293,14 +335,17 @@ flowchart TD
 | `request-timeout` | `i` | `90` | `v1client` |
 | `presets` | `s` (legacy JSON object) | 4 seeds | one-time migration |
 | `stream` | `b` | `false` | `v1client` + live panel |
+| `command-accel` | `s` | `<Super>semicolon` | one global leader → command bar |
+| `hotkey-command` | `as` (internal) | `[]` | mirror used by `addKeybinding` |
+| `queue-badge` | `b` | `true` | persistent FIFO badge |
 
 A shortcut entry:
 
 ```json
 {
   "id": "sc_default_process",
-  "label": "Processar pilha",
-  "accel": "<Alt><Super>c",
+  "label": "Escrever/processar topo",
+  "accel": "<Alt><Super>v",
   "mode": "process",
   "prompt": "Corrija o português, mantendo o sentido e o tom."
 }

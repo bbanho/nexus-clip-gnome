@@ -7,6 +7,7 @@ import {
     normalizeLoaded,
     serializeState,
 } from './store-core.js';
+import { DEFAULT_HISTORY_LIMIT, parseHistory } from './history-core.js';
 
 export function createStoreIo(adapter) {
     const {
@@ -54,6 +55,15 @@ export function createStoreIo(adapter) {
         return saveJson('fifo.json', dir, state);
     }
 
+    function loadHistory(dir, { limit = DEFAULT_HISTORY_LIMIT } = {}) {
+        try {
+            const raw = readText(join(resolveDir(dir), 'history.jsonl'));
+            return parseHistory(raw, { limit });
+        } catch (_e) {
+            return [];
+        }
+    }
+
     function appendHistory(dir, node) {
         const baseDir = resolveDir(dir);
         mkdirp(baseDir);
@@ -74,6 +84,7 @@ export function createStoreIo(adapter) {
         saveStack,
         loadFifo,
         saveFifo,
+        loadHistory,
         appendHistory,
         clearHistory,
     };

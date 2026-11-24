@@ -1,0 +1,17 @@
+id: no-gtk-in-shell
+language: js
+severity: error
+message: >-
+  GTK/Adw/Gdk must not be imported in the shell process (ADR-0009 / CP-01).
+  Creating GTK widgets inside the compositor deadlocks Wayland. Only prefs.js
+  (a separate process) may import them.
+note: Shell UI must use St/Clutter (extension/lib/hud.js).
+rule:
+  kind: import_statement
+  has:
+    kind: string
+    regex: 'gi://(Gtk|Adw|Gdk)'
+files:
+  - extension/**/*.js
+ignores:
+  - extension/prefs.js

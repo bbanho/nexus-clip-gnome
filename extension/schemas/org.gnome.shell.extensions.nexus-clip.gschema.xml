@@ -61,6 +61,17 @@
       <summary>Shortcut slot 11</summary>
     </key>
 
+    <!-- Single global chord that opens the keyboard-only Super command bar.
+         Keeping one grab means plain Super+letter stays natural in GNOME. -->
+    <key name="hotkey-command" type="as">
+      <default>[]</default>
+      <summary>Internal slot for the Super command leader</summary>
+    </key>
+    <key name="command-accel" type="s">
+      <default>'&lt;Super&gt;semicolon'</default>
+      <summary>Accelerator that opens the Super command bar</summary>
+    </key>
+
     <key name="api-endpoint" type="s">
       <default>'http://localhost:8010/v1/chat/completions'</default>
       <summary>API endpoint</summary>
@@ -85,6 +96,35 @@
     <key name="stream" type="b">
       <default>false</default>
       <summary>Stream responses</summary>
+    </key>
+
+    <!-- Feedback policy. Successes go to a transient status chip; system
+         notifications fire only per `notify-level` (default: errors only). -->
+    <key name="notify-level" type="s">
+      <default>'errors'</default>
+      <summary>System notification policy: errors | all | silent</summary>
+    </key>
+    <key name="status-chip" type="b">
+      <default>true</default>
+      <summary>Show a transient on-screen status chip for each operation</summary>
+    </key>
+    <key name="status-seconds" type="i">
+      <default>4</default>
+      <summary>How long the status chip stays visible (seconds)</summary>
+    </key>
+    <key name="history-limit" type="i">
+      <default>200</default>
+      <summary>Maximum history entries loaded into the visual history</summary>
+    </key>
+    <key name="queue-badge" type="b">
+      <default>true</default>
+      <summary>Show a persistent on-screen badge while the FIFO has work</summary>
+    </key>
+    <!-- Opt-out "queue by nature": inference actions are serialized instead of
+         rejecting a second press with "busy". -->
+    <key name="queue-auto" type="b">
+      <default>true</default>
+      <summary>Serialize inference actions through a FIFO instead of blocking</summary>
     </key>
   </schema>
 </schemalist>

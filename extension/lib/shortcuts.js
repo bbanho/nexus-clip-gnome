@@ -15,21 +15,41 @@ export const MODES = [
     'drain',
     'pop',
     'show',
+    'import',
+    'history',
+    'audit-import',
+    'mirror-import',
+    'status',
+    'provenance',
 ];
 
+// Keep these short: they render inside a narrow ComboRow popup, where long
+// labels get ellipsized and the action becomes unreadable.
 export const MODE_LABELS = {
-    'push-process': 'Importar do sistema + processar',
-    'process': 'Processar topo do Nexus',
-    'copy-top': 'Copiar topo do Nexus para o sistema',
+    'push-process': 'Coletar + processar',
+    'process': 'Escrever topo (IA)',
+    'copy-top': 'Mover topo → sistema',
     'enqueue': 'Enfileirar prompt',
-    'run-next': 'Rodar próximo da fila',
+    'run-next': 'Rodar próximo',
     'drain': 'Rodar fila inteira',
-    'pop': 'Desfazer (voltar um item)',
-    'show': 'Mostrar pilha e fila',
+    'pop': 'Desfazer',
+    'show': 'Mostrar pilha/fila',
+    'import': 'Importar do sistema',
+    'history': 'Histórico visual',
+    'audit-import': 'Importar auditado',
+    'mirror-import': 'Importar + espelhar',
+    'status': 'Visão geral',
+    'provenance': 'Gravar proveniência',
 };
 
 const MODE_SET = new Set(MODES);
+
+// Modes that *use* a prompt (the editor stays visible in prefs)…
 const PROMPT_MODES = new Set(['push-process', 'process', 'enqueue']);
+// …but only `enqueue` cannot work without one. `push-process`/`process` may
+// borrow the next prompt from the FIFO, which is the default flow now.
+const REQUIRED_PROMPT_MODES = new Set(['enqueue']);
+const QUEUE_PROMPT_MODES = new Set(['push-process', 'process']);
 
 export const DEFAULT_PROMPT =
     'Corrija o português, mantendo o sentido e o tom.';
@@ -46,7 +66,7 @@ const MODIFIER_ALIASES = {
     meta: 'Meta',
 };
 
-// Accelerators already owned by GNOME Shell on a default GNOME 45-50 setup.
+// Accelerators already owned by GNOME Shell on a default GNOME 45-51 setup.
 // Kept as warnings (the shell wins silently otherwise).
 const GNOME_RESERVED = [
     '<Super>v',
@@ -73,6 +93,16 @@ export function modeLabel(mode) {
 
 export function needsPrompt(mode) {
     return PROMPT_MODES.has(mode);
+}
+
+/** A prompt is mandatory (cannot fall back to the FIFO). */
+export function requiresPrompt(mode) {
+    return REQUIRED_PROMPT_MODES.has(mode);
+}
+
+/** The action may borrow the next prompt from the FIFO when its own is empty. */
+export function promptFromQueue(mode) {
+    return QUEUE_PROMPT_MODES.has(mode);
 }
 
 export function makeId(prefix = 'sc') {
@@ -198,7 +228,7 @@ export function registrationList(list) {
     return result;
 }
 
-export function validateShortcuts(list) {
+export function validateShortcuts(list, compositions = []) {
     const errors = [];
     const warnings = [];
     const byAccel = new Map();
@@ -243,10 +273,28 @@ export function validateShortcuts(list) {
             }
         }
 
-        if (needsPrompt(shortcut.mode) && !String(shortcut.prompt || '').trim()) {
+        if (requiresPrompt(shortcut.mode) && !String(shortcut.prompt || '').trim()) {
             errors.push({ index, field: 'prompt', message: 'Prompt vazio' });
         }
     });
+
+    const maximumCompositions = Math.max(0, (list ?? []).length - 1);
+    if (compositions.length > maximumCompositions) {
+        errors.push({
+            index: -1,
+            field: 'composition',
+            message: `Máximo de ${maximumCompositions} combinações para ${list.length} atalhos`,
+        });
+    }
+    for (const composition of compositions) {
+        if (Array.isArray(composition.actions) && composition.actions.length > 2) {
+            errors.push({
+                index: -1,
+                field: 'composition',
+                message: 'Cada combinação pode ter no máximo 2 ações',
+            });
+        }
+    }
 
     return { errors, warnings };
 }
@@ -255,25 +303,68 @@ export function defaultShortcuts() {
     return [
         {
             id: 'sc_default_push_process',
-            label: 'Importar e processar',
-            accel: '<Alt><Super>v',
+            label: 'Coletar clipboard + processar',
+            accel: '<Alt><Super>c',
             mode: 'push-process',
-            prompt: DEFAULT_PROMPT,
+            // Empty on purpose: the prompt comes from the FIFO. Set one here
+            // only if this shortcut should always run a fixed prompt.
+            prompt: '',
         },
         {
             id: 'sc_default_process',
-            label: 'Processar pilha',
-            accel: '<Alt><Super>c',
+            label: 'Escrever/processar topo',
+            accel: '<Alt><Super>v',
             mode: 'process',
-            prompt: DEFAULT_PROMPT,
+            prompt: '',
         },
-        // Export is explicit by design. This template is unbound so the user
-        // only has to capture a key in prefs.
         {
             id: 'sc_default_copy_top',
-            label: 'Copiar topo para o sistema',
-            accel: '',
+            label: 'Mover topo para o sistema (exportar)',
+            accel: '<Alt><Super>x',
             mode: 'copy-top',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_history',
+            label: 'Histórico visual',
+            accel: '<Alt><Super>h',
+            mode: 'history',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_pop',
+            label: 'Desfazer (voltar um item)',
+            accel: '<Alt><Super>z',
+            mode: 'pop',
+            prompt: '',
+        },
+        // Available but unbound: capture a key in prefs only if you use them.
+        {
+            id: 'sc_default_import',
+            label: 'Importar sem processar',
+            accel: '',
+            mode: 'import',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_enqueue',
+            label: 'Enfileirar prompt',
+            accel: '',
+            mode: 'enqueue',
+            prompt: DEFAULT_PROMPT,
+        },
+        {
+            id: 'sc_default_run_next',
+            label: 'Rodar próximo da fila',
+            accel: '',
+            mode: 'run-next',
+            prompt: '',
+        },
+        {
+            id: 'sc_default_drain',
+            label: 'Rodar fila inteira',
+            accel: '',
+            mode: 'drain',
             prompt: '',
         },
     ];
@@ -304,15 +395,15 @@ export function migrateFromPresets(rawPresets) {
     const list = [
         {
             id: 'sc_migrated_push_process',
-            label: 'Importar e processar',
-            accel: '<Alt><Super>v',
+            label: 'Coletar clipboard + processar',
+            accel: '<Alt><Super>c',
             mode: 'push-process',
             prompt: firstPrompt,
         },
         {
             id: 'sc_migrated_process',
-            label: 'Processar pilha',
-            accel: '<Alt><Super>c',
+            label: 'Escrever/processar topo',
+            accel: '<Alt><Super>v',
             mode: 'process',
             prompt: firstPrompt,
         },

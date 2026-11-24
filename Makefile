@@ -1,7 +1,7 @@
 UUID = nexus-clip@bbanho
 EXT_DIR = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 
-.PHONY: check compile-schemas hooks install uninstall enable disable smoke pack
+.PHONY: check compile-schemas hooks install uninstall enable disable smoke pack structural
 
 compile-schemas:
 	glib-compile-schemas --strict extension/schemas
@@ -21,6 +21,17 @@ check: compile-schemas
 		node --check "$$f" || exit 1; \
 	done
 	gjs -m tests/gjs-store-smoke.mjs
+	@if command -v ast-grep >/dev/null 2>&1; then \
+		ast-grep scan; \
+	else \
+		echo "ast-grep not installed; skipping structural scan (see 'make structural')"; \
+	fi
+
+# Structural invariant gate (ast-grep). AST-level companion to the regex-based
+# tests/shell-boundary.test.js. Rules live in rules/ (see sgconfig.yml).
+structural:
+	@command -v ast-grep >/dev/null 2>&1 || { echo "ast-grep is not installed (e.g. brew install ast-grep)"; exit 1; }
+	ast-grep scan
 
 smoke:
 	gjs -m tests/gjs-client-smoke.mjs

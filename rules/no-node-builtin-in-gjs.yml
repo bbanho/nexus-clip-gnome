@@ -1,0 +1,14 @@
+id: no-node-builtin-in-gjs
+language: js
+severity: error
+message: >-
+  Node builtins (node:*, fs, path, os, child_process, ...) are unavailable in
+  GJS — both the shell process and prefs run on GNOME's JS engine, not Node.
+  Use Gio/GLib instead (CP-01).
+rule:
+  kind: import_statement
+  has:
+    kind: string
+    regex: "(node:|'(fs|path|os|child_process|crypto|http|https|url|util|stream|buffer)')"
+files:
+  - extension/**/*.js
