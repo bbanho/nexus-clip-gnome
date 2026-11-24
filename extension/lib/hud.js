@@ -17,7 +17,7 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import { filterHistory } from './history-core.js';
+import { filterHistory, recentClips } from './history-core.js';
 import { searchTemplates } from './prompts.js';
 import {
     commandForChar,
@@ -168,6 +168,9 @@ export function showStackView({
     let query = '';
     let selected = 0;
     let rows = [];
+    // "Recentes" is the default History view: ordered by ts, repeated payloads
+    // collapsed with a visible count. `r` toggles to raw chronological order.
+    let recentMode = true;
 
     const overlay = new St.Widget({
         reactive: true,
@@ -307,11 +310,16 @@ export function showStackView({
                 });
             });
         } else if (tab === 'history') {
-            filterHistory(data.history, query).forEach(entry => {
+            // Read-only projection. The log stays append-only; a `×N` count is
+            // shown instead of silently dropping repeated results (CP-06).
+            const entries = recentMode ? recentClips(data.history) : data.history;
+            filterHistory(entries, query).forEach(entry => {
                 const name = entry.label || entry.mode || 'inferência';
                 const body = entry.text ?? entry.prompt ?? entry.uuid ?? '';
+                const count = entry.count > 1 ? ` ×${entry.count}` : '';
+                const order = recentMode ? 'RECENTE · ' : '';
                 out.push({
-                    head: `${name} · ${ageLabel(entry.ts)}`,
+                    head: `${order}${name}${count} · ${ageLabel(entry.ts)}`,
                     sub: preview(body, 220),
                     // Explicit export only: a provenance row copies its UUID,
                     // never the source text (which is not stored there anyway).
@@ -464,6 +472,15 @@ export function showStackView({
             hint.set_text('↑↓ escolher · Enter copiar prompt · Del remover passo · Esc fechar');
             actions.add_child(makeButton('Copiar', copySelected));
             actions.add_child(makeButton('Remover', removeSelected));
+        } else if (tab === 'history') {
+            hint.set_text(
+                '↑↓ · R alterna recentes/cronológico · Enter copiar · Ctrl+Enter usar · Esc fechar'
+            );
+            actions.add_child(makeButton('Copiar', copySelected));
+            actions.add_child(makeButton(
+                recentMode ? 'Cronológico' : 'Recentes',
+                () => { recentMode = !recentMode; rebuild(); }
+            ));
         } else {
             hint.set_text('↑↓ · Enter copiar p/ sistema · Ctrl+Enter usar no Nexus · Del remover · Esc fechar');
             actions.add_child(makeButton('Copiar', copySelected));
@@ -507,6 +524,13 @@ export function showStackView({
         }
         if (symbol >= Clutter.KEY_1 && symbol <= Clutter.KEY_4) {
             switchTab(TABS[symbol - Clutter.KEY_1].key);
+            return true;
+        }
+        // In-panel mnemonic only (ADR-0012): no new global grab. Ignored while
+        // the search entry has focus, where `r` must remain typable.
+        if (symbol === Clutter.KEY_r && tab === 'history') {
+            recentMode = !recentMode;
+            rebuild();
             return true;
         }
         if (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter) {

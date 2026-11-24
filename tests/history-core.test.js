@@ -6,6 +6,7 @@ import {
     filterHistory,
     normalizeHistoryEntry,
     parseHistory,
+    recentClips,
 } from '../extension/lib/history-core.js';
 
 function jsonl(entries) {
@@ -96,6 +97,80 @@ test('parseHistory preserves a string origin on provenance entries only', () => 
     // parseHistory is newest-first, so 'b' is index 0.
     assert.equal(entries.find(e => e.id === 'a').origin, 'item_pai');
     assert.equal(entries.find(e => e.id === 'b').origin, undefined);
+});
+
+test('filterHistory also matches boundary-safe uuid and hash tokens', () => {
+    const entries = [
+        { id: 'p', mode: 'provenance', uuid: 'aaaa-bbbb', hash: 'deadbeef' },
+        { id: 't', text: 'texto simples' },
+    ];
+    assert.deepEqual(filterHistory(entries, 'deadbeef').map(e => e.id), ['p']);
+    assert.deepEqual(filterHistory(entries, 'aaaa').map(e => e.id), ['p']);
+    assert.deepEqual(filterHistory(entries, 'texto').map(e => e.id), ['t']);
+});
+
+test('recentClips orders by timestamp, not by file position', () => {
+    const entries = [
+        { id: 'old-last-line', text: 'a', ts: 10 },
+        { id: 'newest', text: 'b', ts: 30 },
+        { id: 'middle', text: 'c', ts: 20 },
+    ];
+    assert.deepEqual(recentClips(entries).map(e => e.id), ['newest', 'middle', 'old-last-line']);
+});
+
+test('recentClips collapses identical payloads into one counted row', () => {
+    const entries = [
+        { id: 'r3', text: 'mesmo texto', ts: 30, label: 'fix' },
+        { id: 'r2', text: 'mesmo texto', ts: 20, label: 'fix' },
+        { id: 'r1', text: 'mesmo texto', ts: 10, label: 'fix' },
+        { id: 'other', text: 'outro', ts: 25 },
+    ];
+    const rows = recentClips(entries);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].id, 'r3');
+    assert.equal(rows[0].count, 3);
+    assert.equal(rows[0].ts, 30);
+    assert.equal(rows[0].label, 'fix');
+    assert.equal(rows[1].id, 'other');
+});
+
+test('recentClips keeps different prompts with the same text distinct', () => {
+    const entries = [
+        { id: 'a', text: 'resumo', prompt: 'P1', ts: 2 },
+        { id: 'b', text: 'resumo', prompt: 'P2', ts: 1 },
+    ];
+    const rows = recentClips(entries);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(e => e.id), ['a', 'b']);
+});
+
+test('recentClips preserves provenance rows as UUID-only payloads', () => {
+    const entries = [{
+        id: 'prov',
+        ts: 99,
+        mode: 'provenance',
+        uuid: 'aaaa-bbbb-cccc',
+        hash: 'cafe',
+        vector: { chars: 1 },
+    }];
+    const [row] = recentClips(entries);
+    assert.equal(row.uuid, 'aaaa-bbbb-cccc');
+    assert.equal(row.hash, 'cafe');
+    assert.equal(row.text, undefined);
+    assert.equal(row.prompt, undefined);
+    assert.deepEqual(filterHistory([row], 'cafe').map(e => e.id), ['prov']);
+});
+
+test('recentClips never mutates the input array or its entries', () => {
+    const entries = [
+        { id: 'a', text: 'x', ts: 1 },
+        { id: 'b', text: 'x', ts: 2 },
+    ];
+    const snapshot = JSON.stringify(entries);
+    const rows = recentClips(entries);
+    rows[0].count = 99;
+    assert.equal(JSON.stringify(entries), snapshot);
+    assert.equal(entries[0].count, undefined);
 });
 
 test('DEFAULT_HISTORY_LIMIT is a sane positive number', () => {
