@@ -105,6 +105,23 @@ test('validateShortcuts reports duplicates and empty mandatory prompts', () => {
     assert.ok(warnings.some(item => item.index === 3 && item.field === 'accel'));
 });
 
+test('validateShortcuts caps composed bindings at N-1 and each chain at two actions', () => {
+    const shortcuts = [
+        { id: 'a', accel: '<Alt><Super>a', mode: 'copy-top', prompt: '' },
+        { id: 'b', accel: '<Alt><Super>b', mode: 'copy-top', prompt: '' },
+        { id: 'c', accel: '<Alt><Super>c', mode: 'copy-top', prompt: '' },
+    ];
+    const compositions = [
+        { id: 'a', actions: ['import', 'copy-top'] },
+        { id: 'b', actions: ['process', 'copy-top'] },
+        { id: 'c', actions: ['import', 'process', 'copy-top'] },
+    ];
+
+    const { errors } = validateShortcuts(shortcuts, compositions);
+    assert.ok(errors.some(error => /Máximo de 2 combinações/.test(error.message)));
+    assert.ok(errors.some(error => /no máximo 2 ações/i.test(error.message)));
+});
+
 test('process and push-process may borrow the FIFO prompt; enqueue may not', () => {
     assert.equal(needsPrompt('process'), true);
     assert.equal(requiresPrompt('process'), false);

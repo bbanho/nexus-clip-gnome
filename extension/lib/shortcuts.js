@@ -228,7 +228,7 @@ export function registrationList(list) {
     return result;
 }
 
-export function validateShortcuts(list) {
+export function validateShortcuts(list, compositions = []) {
     const errors = [];
     const warnings = [];
     const byAccel = new Map();
@@ -277,6 +277,24 @@ export function validateShortcuts(list) {
             errors.push({ index, field: 'prompt', message: 'Prompt vazio' });
         }
     });
+
+    const maximumCompositions = Math.max(0, (list ?? []).length - 1);
+    if (compositions.length > maximumCompositions) {
+        errors.push({
+            index: -1,
+            field: 'composition',
+            message: `Máximo de ${maximumCompositions} combinações para ${list.length} atalhos`,
+        });
+    }
+    for (const composition of compositions) {
+        if (Array.isArray(composition.actions) && composition.actions.length > 2) {
+            errors.push({
+                index: -1,
+                field: 'composition',
+                message: 'Cada combinação pode ter no máximo 2 ações',
+            });
+        }
+    }
 
     return { errors, warnings };
 }
