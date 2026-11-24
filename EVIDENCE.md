@@ -73,7 +73,7 @@ gsettings --schemadir extension/schemas list-recursively org.gnome.shell.extensi
 ```
 
 Expected: the **Atalhos e prompts** group lists nine entries — five bound
-(`<Alt><Super>v`, `<Alt><Super>c`, `<Alt><Super>x`, `<Alt><Super>h`, `<Alt><Super>z`) and four
+(`<Alt><Super>c`, `<Alt><Super>v`, `<Alt><Super>x`, `<Alt><Super>h`, `<Alt><Super>z`) and four
 unbound templates (`import`, `enqueue`, `run-next`, `drain`). `shortcuts` is a JSON array;
 `hotkey-slot-0..4` mirror the five bound accelerators.
 
@@ -81,10 +81,10 @@ unbound templates (`import`, `enqueue`, `run-next`, `drain`). `shortcuts` is a J
 <PASTE OUTPUT HERE>
 ```
 
-## 3. Import + process (no system-clipboard write-back)
+## 3. Collect + process (no system-clipboard write-back)
 
 1. Copy `este texto tem ums erro de portugues`.
-2. Press `<Alt><Super>v`.
+2. Press `<Alt><Super>c` (**coletar**).
 3. Paste into a scratch editor (should still be the **original** text, not the result).
 
 ```bash
@@ -100,9 +100,9 @@ mentions "topo do Nexus".
 <PASTE OUTPUT HERE>
 ```
 
-## 4. Process the Nexus top (chaining)
+## 4. Write to the Nexus top (chaining)
 
-1. Press `<Alt><Super>c`.
+1. Press `<Alt><Super>v` (**escrever**).
 2. Press it once more.
 
 ```bash
@@ -118,7 +118,7 @@ the previous top. The stack grows by one per press.
 
 ## 5. Export (explicit only)
 
-1. Press **`Alt` + `Super` + `X`** (**Copiar topo do Nexus para o sistema**, bound by default).
+1. Press **`Alt` + `Super` + `X`** (**Mover topo para o sistema**, bound by default).
 2. Paste into the scratch editor.
 
 Expected: the pasted text is the Nexus top. No inference path wrote the clipboard before
@@ -156,8 +156,8 @@ Expected: `run-next` consumes exactly one prompt per activation and only after s
    grep -rn "gi://Gtk\|gi://Adw\|selector" extension/extension.js extension/lib/
    # expect no matches
    ```
-2. Press the old bindings `<Super>x` and `<Super>c` (not bound by this extension).
-3. Press `<Alt><Super>v`, `<Alt><Super>c`, and open/close the HUD repeatedly.
+2. Press the bare bindings `<Super>c` and `<Super>v` (not bound by this extension).
+3. Press `<Alt><Super>c`, `<Alt><Super>v`, and open/close the HUD repeatedly.
 
 Expected: GNOME Shell remains responsive; no freeze; `journalctl` shows no GTK/selector
 errors from the extension.
@@ -217,11 +217,11 @@ from merely picking a template.
 
 ## 11. Quiet feedback (status chip + notification policy)
 
-1. With defaults (`notify-level=errors`, `status-chip=true`), run `<Alt><Super>c`.
+1. With defaults (`notify-level=errors`, `status-chip=true`), run `<Alt><Super>v`.
    Expect a transient status chip (`✓ …`) and **no** system notification.
 2. Set `notify-level` to `all`; run again → a system notification fires.
 3. Set `notify-level` to `silent`; run again → no notification (chip still shows).
-4. Force an error (stop the gateway) and run `<Alt><Super>c` → an error notification fires
+4. Force an error (stop the gateway) and run `<Alt><Super>v` → an error notification fires
    under the default `errors` policy.
 
 ```bash

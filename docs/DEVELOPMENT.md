@@ -119,8 +119,8 @@ Under the hood the list is a JSON array in the `shortcuts` key:
 [
   {
     "id": "sc_default_push_process",
-    "label": "Importar e processar",
-    "accel": "<Alt><Super>v",
+    "label": "Coletar clipboard + processar",
+    "accel": "<Alt><Super>c",
     "mode": "push-process",
     "prompt": "Corrija o português, mantendo o sentido e o tom."
   }

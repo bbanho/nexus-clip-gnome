@@ -19,11 +19,11 @@ actions, so an inference result will not silently overwrite text you copied else
 Press **`Super` + `;`** once. A small St panel (not a separate app window) opens with the live
 stack/FIFO depth and the next queued step. Then press **one key**:
 
-| Key | Action |
-|---|---|
-| `V` | Import the desktop clipboard and process it with AI |
-| `C` | Process the current Nexus top with AI |
-| `X` | Copy the Nexus top to the desktop clipboard (explicit export) |
+| Key | Action | Muscle memory |
+|---|---|---|
+| `C` | **Collect** the desktop clipboard and process it with AI | `Ctrl+C`: gather text into the clipboard — here, into Nexus |
+| `V` | **Write** AI output onto the current Nexus top | `Ctrl+V`: put text where you're working — here, the Nexus top |
+| `X` | **Move** a copy of the Nexus top to the desktop clipboard (explicit export) | `Ctrl+X`: take it somewhere else — here, out to the system |
 | `Q` | Enqueue the prompt of the configured `enqueue` shortcut |
 | `N` | Run the next FIFO step (result goes on top) |
 | `D` | Drain the whole FIFO, in order, showing `1/15 … 15/15` progress |
@@ -36,8 +36,9 @@ stack/FIFO depth and the next queued step. Then press **one key**:
 | `1`–`5` | Enqueue one of the first five ready-made prompt templates |
 | `Esc` | Close without doing anything |
 
-`C` and `D` are the "process top" and "process all" operations; the queue is drained in
-FIFO order and the badge shrinks after each step. `A` is the text-only path: copy text that
+`V` and `D` are the "write to top" and "write all" operations; the queue is drained in
+FIFO order and the badge shrinks after each step. `X` moves a **copy** out — it does not pop
+the stack, so `Z` remains the undo. `A` is the text-only path: copy text that
 starts with a line containing exactly `NEXUS-TEXT-1`, then press `A`. Anything binary,
 executable-looking, empty, or larger than 64 KiB is refused before inference. `M` is the only
 new action that writes the desktop clipboard; use it only when you want both copies.
@@ -57,9 +58,9 @@ completed step, and disappears when the queue empties. Disable it in Preferences
 
 | Default | Action | Result |
 |---|---|---|
-| `Alt` + `Super` + `V` | **Importar e processar** | Reads plain text from the desktop clipboard, adds it to Nexus if it differs from the current top, then runs inference with this shortcut's prompt. |
-| `Alt` + `Super` + `C` | **Processar topo** | Runs inference on the current Nexus top and pushes a new result node. |
-| `Alt` + `Super` + `X` | **Copiar topo para o sistema** | Explicitly exports the Nexus top to the desktop clipboard. |
+| `Alt` + `Super` + `C` | **Coletar clipboard + processar** | Reads plain text from the desktop clipboard, adds it to Nexus if it differs from the current top, then runs inference with this shortcut's prompt. |
+| `Alt` + `Super` + `V` | **Escrever/processar topo** | Runs inference on the current Nexus top and pushes a new result node. |
+| `Alt` + `Super` + `X` | **Mover topo para o sistema** | Explicitly exports a copy of the Nexus top to the desktop clipboard; the item stays on the stack. |
 | `Alt` + `Super` + `H` | **Histórico visual** | Opens the searchable history panel (see below). |
 | `Alt` + `Super` + `Z` | **Desfazer** | Pops the newest Nexus item; the previous item becomes the top. |
 

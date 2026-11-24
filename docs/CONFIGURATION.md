@@ -33,7 +33,7 @@ The `shortcuts` setting is a JSON array. Each object has this shape:
 {
   "id": "sc_rewrite",
   "label": "Revisar texto",
-  "accel": "<Alt><Super>r",
+  "accel": "<Alt><Super>v",
   "mode": "process",
   "prompt": "Revise a gramática sem mudar o sentido."
 }
@@ -78,6 +78,21 @@ The **command leader** is a separate key so the whole palette needs only one glo
 | Command leader | `command-accel` | `<Super>semicolon` | Opens the keyboard command bar. Normalized on read/write; invalid or modifier-only values fall back to the default. |
 | Internal command slot | `hotkey-command` | `[]` | Mirror of `command-accel` used by `Main.wm.addKeybinding`. Do not edit directly. |
 
+### Motor-memory map (C / V / X)
+
+The default bindings reuse the desktop's `Ctrl+C` / `Ctrl+V` / `Ctrl+X` muscle memory one
+layer up, under `Super`. `Ctrl+letter` is never grabbed by Nexus, so apps keep copy/paste/cut.
+
+| Key | Command bar (after `Super+;`) | Direct default | Meaning |
+|---|---|---|---|
+| `C` | `push-process` | `<Alt><Super>c` | **Coletar**: clipboard do sistema → pilha Nexus + IA. |
+| `V` | `process` | `<Alt><Super>v` | **Escrever**: IA sobre o topo Nexus; resultado vira novo topo. |
+| `X` | `copy-top` | `<Alt><Super>x` | **Mover uma cópia**: topo Nexus → clipboard do sistema (exportação explícita; o item não sai da pilha). |
+
+Both layers share the same mnemonics so the motion transfers. `Z` (`pop`) is the undo for a
+movement; `N`/`Q`/`D` drive the prompt FIFO. Bare `Super+C` / `Super+V` are reserved by GNOME
+on some versions, which is why the direct defaults keep `Alt` as a second modifier.
+
 To inspect settings using the repository schema:
 
 ```bash
@@ -98,6 +113,24 @@ empty string means first-run/upgrade migration may run.
 | Status duration | `status-seconds` | `4` | How long the status chip stays visible (1–15 s). |
 | History limit | `history-limit` | `200` | Maximum history entries loaded into the visual history. |
 | Queue badge | `queue-badge` | `true` | Persistent top-of-screen badge showing FIFO depth and the next step while work is pending. |
+| Queue by nature | `queue-auto` | `true` | Serialize inference actions through an in-process FIFO instead of refusing them with "Ocupado". Opt out to restore the old busy guard. |
+
+### Queue by nature and the session cache
+
+With `queue-auto=true`, pressing `C`/`V`/`N`/`D` while an inference is running
+enqueues the job instead of rejecting it. Two queues exist: the **persistent
+prompt FIFO** (`fifo.json`, the steps you enqueued) and the **execution
+pipeline** (in-memory, serialized). The badge shows both: `FILA 3 · PIPELINE 2`.
+
+The initial `C`/`V` shortcuts have **no fixed prompt**: they borrow the oldest
+FIFO prompt (enqueued with `Q` or `1`–`5`) and consume it on success. With an
+empty FIFO, `C` still collects into the stack and `V` asks for a prompt. Set a
+prompt in Preferences if a shortcut should always run a fixed one.
+
+A session cache keeps `(fingerprint(input, prompt), output)` for repeated work:
+a hit avoids the network call and is marked `cache` in the status chip and
+history. It lives only in the shell process and dies on restart — no raw input
+or prompt is stored in it, and no desktop clipboard write occurs on inference.
 
 Routine successes always go to the status chip (when enabled) and the history log; the
 `notify-level` policy only controls whether a **system notification** also fires.

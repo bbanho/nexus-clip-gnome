@@ -136,7 +136,7 @@ flowchart LR
 
 ## 4. Data flow
 
-### 4.1 Import + process (`push-process`, `<Alt><Super>v`)
+### 4.1 Collect + process (`push-process`, `<Alt><Super>c`)
 
 ```mermaid
 sequenceDiagram
@@ -146,7 +146,7 @@ sequenceDiagram
   participant St as store (stack.json)
   participant V as v1client
   participant G as /v1 gateway
-  U->>S: press <Alt><Super>v
+  U->>S: press <Alt><Super>c
   S->>C: get_text(CLIPBOARD) (3 s timeout)
   C-->>S: text
   S->>St: loadStack; push input node unless it equals the top
@@ -160,7 +160,7 @@ sequenceDiagram
   Note over S,C: system clipboard is NOT written
 ```
 
-### 4.2 Process the Nexus top (`process`, `<Alt><Super>c`)
+### 4.2 Write to the Nexus top (`process`, `<Alt><Super>v`)
 
 ```mermaid
 sequenceDiagram
@@ -168,7 +168,7 @@ sequenceDiagram
   participant S as actions.doProcess
   participant St as store (stack.json)
   participant V as v1client
-  U->>S: press <Alt><Super>c
+  U->>S: press <Alt><Super>v
   S->>St: loadStack + peek
   alt stack empty
     S-->>U: notify("Pilha do Nexus vazia")
@@ -279,6 +279,14 @@ One JSON object per line:
 sanitizes each line (`history-core.parseHistory`), so a malformed entry degrades safely
 instead of crashing the visual history (CP-16).
 
+**Recentes view (read-only projection).** `history-core.recentClips(entries)` sorts by `ts`
+descending (stable tie-break) and collapses *identical payloads* (`text`/`prompt`/`uuid`)
+into one row with `count`. It runs entirely inside the shell process and writes nothing:
+the log remains append-only and no result is deduplicated in storage (CP-06). The HUD opens
+the Histórico tab in this mode and toggles to raw file order with `R`. Cost is O(n log n) for
+the timestamp sort plus O(n) for Map grouping — bounded upstream by `history-limit` (200).
+Search also matches `uuid`/`hash` (boundary-safe tokens); numeric vectors are never searched.
+
 ### Tree-readiness (future)
 
 Every node carries `id` + `parentId`; results point at their source. A branching tree UI
@@ -336,8 +344,8 @@ A shortcut entry:
 ```json
 {
   "id": "sc_default_process",
-  "label": "Processar pilha",
-  "accel": "<Alt><Super>c",
+  "label": "Escrever/processar topo",
+  "accel": "<Alt><Super>v",
   "mode": "process",
   "prompt": "Corrija o português, mantendo o sentido e o tom."
 }

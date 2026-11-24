@@ -32,11 +32,13 @@
 - .github/workflows/ci.yml — `make check` on pull requests and master
 
 ## Defaults
-- `Super+;` — one global leader → keyboard command bar: V/C/X/Q/N/D/Z/H actions, 1–5 enqueue prompt templates; plain Super+letter stays natural.
+- `Super+;` — one global leader → keyboard command bar: C/V/X/Q/N/D/Z/H actions, 1–5 enqueue prompt templates; plain Super+letter stays natural.
+- Motor memory: C=collect (system → Nexus), V=write (AI on Nexus top), X=move a copy out (Nexus → system); desktop Ctrl+C/V/X is never grabbed.
 - `queue-badge=true` — persistent top badge with FIFO depth + next step while work is pending; disappears when empty.
-- `<Alt><Super>v` — Importar e processar: system clipboard → Nexus stack → prompt → result node.
-- `<Alt><Super>c` — Processar topo: prompt applied to the Nexus top → new result node.
-- `<Alt><Super>x` — copy-top: export the Nexus top to the system clipboard.
+- `<Alt><Super>c` — coletar: system clipboard → Nexus stack → prompt (borrowed from FIFO) → result node.
+- `<Alt><Super>v` — escrever/processar: FIFO prompt applied to the Nexus top → new result node.
+- `queue-auto=true` — serialize inference in a FIFO; `fifo.json` is the prompt queue, in-memory pipeline is the execution queue; session cache serves repeated pairs.
+- `<Alt><Super>x` — mover/exportar: export a copy of the Nexus top to the system clipboard.
 - `<Alt><Super>h` — history: open the visual history panel.
 - `<Alt><Super>z` — pop: undo (remove the newest Nexus item).
 - `import`/`enqueue`/`run-next`/`drain` — available as unbound templates.

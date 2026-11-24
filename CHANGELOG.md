@@ -7,7 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - **Super command bar** (`lib/command-keys.js`, `hud.js`, `extension.js`): a single
-  `Super+;` leader opens a keyboard-only St panel; `V/C/X/Q/N/D/Z/H` run actions and `1`–`5`
+  `Super+;` leader opens a keyboard-only St panel; `C/V/X/Q/N/D/Z/H` run actions and `1`–`5`
   enqueue prompt templates. Plain `Super+letter` stays natural in GNOME. New keys
   `command-accel` and `hotkey-command`.
 - **Persistent queue badge** (`queue-badge`, default on): shows FIFO depth and the next step
@@ -49,6 +49,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   metadata contract, accelerator validation, and malformed persisted-state recovery.
 - `.githooks/pre-commit` + `.githooks/pre-push` (enabled by `make hooks`) and
   `.github/workflows/ci.yml`; all run `make check`.
+
+### Changed
+- **Queue by nature (opt-out)**: `queue-auto` (default on) serializes inference
+  actions instead of reporting "Ocupado"; the badge now shows `FILA n · PIPELINE m`.
+  A session cache serves repeated `(input, prompt)` pairs without another network
+  call, marked `cache` in status/history. New `pipeline.js` module and ADR-0015.
+- **No fixed prompt in the initial C/V shortcuts**: they borrow the oldest FIFO
+  prompt and consume it on success; `C` with an empty FIFO degrades to an import.
+  Only `enqueue` requires a prompt now.
+- **Motor-memory mnemonics (`C` / `V` / `X`)**: the command bar and the direct defaults now
+  agree — `C` collects the desktop clipboard into Nexus, `V` writes AI output onto the Nexus
+  top, and `X` moves a copy out to the desktop clipboard. Direct defaults became
+  `<Alt><Super>c` / `<Alt><Super>v` / `<Alt><Super>x`; desktop `Ctrl+C/V/X` is never grabbed.
+  ADR-0014 records the rationale.
 
 ### Fixed
 - Invalid accelerators without a key (`<Alt><Super>`) are never registered and are
