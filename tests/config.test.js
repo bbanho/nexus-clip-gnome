@@ -104,6 +104,7 @@ test('readUiConfig reads the feedback policy and history limit', () => {
         'status-seconds': 6,
         'history-limit': 50,
         'queue-badge': false,
+        'queue-auto': false,
     });
     assert.deepEqual(readUiConfig(settings), {
         notifyLevel: 'all',
@@ -111,6 +112,7 @@ test('readUiConfig reads the feedback policy and history limit', () => {
         statusSeconds: 6,
         historyLimit: 50,
         queueBadge: false,
+        queueAuto: false,
     });
 });
 

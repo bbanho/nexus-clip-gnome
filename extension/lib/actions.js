@@ -18,7 +18,8 @@ import {
     shortcutForCommand,
     templateCommands,
 } from './command-keys.js';
-import { needsPrompt, parseShortcuts } from './shortcuts.js';
+import { parseShortcuts, promptFromQueue, requiresPrompt } from './shortcuts.js';
+import { createSerialQueue, createSessionCache } from './pipeline.js';
 import { PROMPT_TEMPLATES } from './prompts.js';
 import { formatStatus, shouldNotify } from './notify-policy.js';
 import { auditText } from './text-gate.js';
@@ -106,6 +107,17 @@ export function createActions({ settings }) {
     let commandBar = null;
     let queueBadge = null;
 
+    // "Queue by nature" (opt-out): inference jobs are serialized instead of
+    // rejecting a second press with "Ocupado". The session cache keeps the
+    // (input, prompt) -> output pair until the shell process restarts.
+    const inferenceQueue = createSerialQueue();
+    const sessionCache = createSessionCache({
+        // Session-scoped. A future keyring-backed cache can rotate this token
+        // without changing the call sites.
+        token: Math.random().toString(36).slice(2),
+    });
+    const INFERENCE_MODES = new Set(['push-process', 'process', 'run-next', 'drain']);
+
     // The FIFO is a first-class, always-visible object: the badge appears as
     // soon as work is queued and updates after every state change, so a
     // backlog of 15 steps is felt instead of discovered by accident.
@@ -125,6 +137,7 @@ export function createActions({ settings }) {
                 text: formatQueueBadge({
                     stackCount: stack.items.length,
                     fifoCount: fifo.items.length,
+                    pipelineCount: inferenceQueue.length(),
                     next: fifo.items[0]?.label || fifo.items[0]?.prompt || '',
                     running,
                 }),
@@ -252,10 +265,52 @@ export function createActions({ settings }) {
         return prompt;
     }
 
-    async function doPushProcess(shortcut) {
-        const prompt = requirePrompt(shortcut);
-        if (!prompt)
+    /**
+     * Prompt resolution for C/V: the shortcut's own prompt wins; otherwise
+     * borrow the oldest FIFO prompt. `fromQueue` means "consume on success".
+     */
+    function sessionPrompt(shortcut) {
+        const own = String(shortcut.prompt ?? '').trim();
+        if (own)
+            return { prompt: own, fromQueue: false, item: null };
+        if (!promptFromQueue(shortcut.mode))
+            return { prompt: '', fromQueue: false, item: null };
+        const fifo = store.loadFifo();
+        const item = fifo.items[0] ?? null;
+        return item
+            ? { prompt: item.prompt, fromQueue: true, item }
+            : { prompt: '', fromQueue: false, item: null };
+    }
+
+    /** Consume exactly the borrowed FIFO prompt, after a successful step. */
+    function consumeSessionPrompt(resolved) {
+        if (!resolved.fromQueue || !resolved.item)
             return;
+        const fifo = store.loadFifo();
+        if (!fifo.items.some(item => item.id === resolved.item.id))
+            return;
+        const next = {
+            ...fifo,
+            items: fifo.items.filter(item => item.id !== resolved.item.id),
+        };
+        store.saveFifo(null, next);
+        syncQueueBadge();
+    }
+
+    /** A cache hit reuses the output of the same (input, prompt) pair. */
+    async function inferCached({ prompt, input, label }) {
+        const hit = sessionCache.get(input, prompt);
+        if (hit)
+            return { output: hit.output, cached: true };
+        const result = await infer({ prompt, input, label });
+        const output = String(result ?? '').trim();
+        if (output)
+            sessionCache.put(input, prompt, output, { label });
+        return { output, cached: false };
+    }
+
+    async function doPushProcess(shortcut) {
+        const resolved = sessionPrompt(shortcut);
 
         const clipboard = await readClipboard();
         if (!clipboard || !clipboard.trim()) {
@@ -279,12 +334,19 @@ export function createActions({ settings }) {
             store.saveStack(null, state);
         }
 
-        const result = await infer({
-            prompt,
+        // No fixed prompt and an empty FIFO: collecting is still useful, so
+        // degrade to an import instead of failing the whole gesture.
+        if (!resolved.prompt) {
+            syncQueueBadge();
+            success('Coletado (sem prompt)', `pilha ${state.items.length} · enfileire um prompt (Q)`);
+            return;
+        }
+
+        const { output, cached } = await inferCached({
+            prompt: resolved.prompt,
             input: inputNode.text,
             label: shortcut.label,
         });
-        const output = String(result ?? '').trim();
         if (!output) {
             fail('Resposta vazia');
             return;
@@ -292,9 +354,10 @@ export function createActions({ settings }) {
 
         const saved = store.pushResult(state, output, {
             parentId: inputNode.id,
-            prompt,
+            prompt: resolved.prompt,
         });
         store.saveStack(null, saved.state);
+        consumeSessionPrompt(resolved);
         // The system clipboard is intentionally NOT touched here: Nexus has its
         // own clipboard (the stack top). Export is an explicit action.
         store.appendHistory(null, {
@@ -302,18 +365,17 @@ export function createActions({ settings }) {
             parentId: inputNode.id,
             text: output,
             ts: Date.now(),
-            prompt,
+            prompt: resolved.prompt,
             mode: shortcut.mode,
             label: shortcut.label,
+            cached,
         });
         syncQueueBadge();
-        success(shortcut.label, `pilha ${saved.state.items.length}`);
+        success(shortcut.label, `${cached ? 'cache · ' : ''}pilha ${saved.state.items.length}`);
     }
 
     async function doProcess(shortcut) {
-        const prompt = requirePrompt(shortcut);
-        if (!prompt)
-            return;
+        const resolved = sessionPrompt(shortcut);
 
         const state = store.loadStack();
         const top = store.peek(state);
@@ -322,12 +384,16 @@ export function createActions({ settings }) {
             return;
         }
 
-        const result = await infer({
-            prompt,
+        if (!resolved.prompt) {
+            fail('Fila vazia — enfileire um prompt (Q) ou configure o atalho');
+            return;
+        }
+
+        const { output, cached } = await inferCached({
+            prompt: resolved.prompt,
             input: top.text,
             label: shortcut.label,
         });
-        const output = String(result ?? '').trim();
         if (!output) {
             fail('Resposta vazia');
             return;
@@ -335,21 +401,23 @@ export function createActions({ settings }) {
 
         const saved = store.pushResult(state, output, {
             parentId: top.id,
-            prompt,
+            prompt: resolved.prompt,
         });
         store.saveStack(null, saved.state);
-        // Result stays in the Nexus stack; use "Copiar topo" to export.
+        consumeSessionPrompt(resolved);
+        // Result stays in the Nexus stack; use "Mover topo" (X) to export.
         store.appendHistory(null, {
             id: saved.node.id,
             parentId: top.id,
             text: output,
             ts: Date.now(),
-            prompt,
+            prompt: resolved.prompt,
             mode: shortcut.mode,
             label: shortcut.label,
+            cached,
         });
         syncQueueBadge();
-        success(shortcut.label, `pilha ${saved.state.items.length}`);
+        success(shortcut.label, `${cached ? 'cache · ' : ''}pilha ${saved.state.items.length}`);
     }
 
     function doEnqueue(shortcut) {
@@ -378,12 +446,11 @@ export function createActions({ settings }) {
             return;
         }
 
-        const result = await infer({
+        const { output, cached } = await inferCached({
             prompt: dequeued.item.prompt,
             input: top.text,
             label: dequeued.item.label ?? 'Fila',
         });
-        const output = String(result ?? '').trim();
         if (!output) {
             fail('Resposta vazia — passo mantido na fila');
             return;
@@ -405,12 +472,14 @@ export function createActions({ settings }) {
             prompt: dequeued.item.prompt,
             mode: 'run-next',
             label: dequeued.item.label ?? 'Fila',
+            cached,
         });
 
+        const prefix = cached ? 'cache · ' : '';
         if (dequeued.state.items.length === 0)
-            success('Fila concluída', 'resultado no topo do Nexus');
+            success('Fila concluída', `${prefix}resultado no topo do Nexus`);
         else
-            success('Passo ok', `fila ${dequeued.state.items.length} · próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
+            success('Passo ok', `${prefix}fila ${dequeued.state.items.length} · próximo: ${preview(dequeued.state.items[0].prompt, 48)}`);
     }
 
     async function doDrain() {
@@ -432,22 +501,24 @@ export function createActions({ settings }) {
         let parent = top;
         let currentText = top.text;
         let steps = 0;
+        let cacheHits = 0;
 
         while (fifo.items.length > 0) {
             const dequeued = store.dequeue(fifo);
             if (!dequeued.item)
                 break;
 
-            const result = await infer({
+            const { output, cached } = await inferCached({
                 prompt: dequeued.item.prompt,
                 input: currentText,
                 label: `Fila ${steps + 1}/${total}`,
             });
-            const output = String(result ?? '').trim();
             if (!output) {
                 fail(`Resposta vazia no passo ${steps + 1} — fila preservada`);
                 return;
             }
+            if (cached)
+                cacheHits++;
 
             const saved = store.pushResult(state, output, {
                 parentId: parent.id,
@@ -470,10 +541,12 @@ export function createActions({ settings }) {
                 prompt: dequeued.item.prompt,
                 mode: 'drain',
                 step: steps,
+                cached,
             });
         }
 
-        success('Fila concluída', `${steps} passo(s) · resultado no topo do Nexus`);
+        const cacheNote = cacheHits > 0 ? ` · ${cacheHits} cache` : '';
+        success('Fila concluída', `${steps} passo(s)${cacheNote} · resultado no topo do Nexus`);
     }
 
     function doPop() {
@@ -568,10 +641,12 @@ export function createActions({ settings }) {
             limit: readUiConfig(settings).historyLimit,
         });
         const next = fifo.items[0]?.label || fifo.items[0]?.prompt || '—';
+        const cache = sessionCache.stats();
         success(
             'Visão geral',
             `pilha ${stack.items.length} · fila ${fifo.items.length} · ` +
-            `histórico ${history.length} · próximo: ${preview(next, 32)}`
+            `histórico ${history.length} · cache ${cache.hits}/${cache.size} · ` +
+            `próximo: ${preview(next, 32)}`
         );
     }
 
@@ -641,6 +716,13 @@ export function createActions({ settings }) {
         }
     }
 
+    function closeLivePanel() {
+        if (livePanel) {
+            livePanel.close();
+            livePanel = null;
+        }
+    }
+
     function runShortcut(shortcut) {
         if (destroyed || !shortcut)
             return;
@@ -654,12 +736,29 @@ export function createActions({ settings }) {
             return;
         }
 
-        if (busy) {
-            report('info', 'Ocupado — aguarde a operação atual');
+        if (requiresPrompt(shortcut.mode) && !String(shortcut.prompt ?? '').trim()) {
+            fail(`"${shortcut.label}" está sem prompt — configure em Preferências`);
             return;
         }
-        if (needsPrompt(shortcut.mode) && !String(shortcut.prompt ?? '').trim()) {
-            fail(`"${shortcut.label}" está sem prompt — configure em Preferências`);
+
+        const ui = readUiConfig(settings);
+        if (INFERENCE_MODES.has(shortcut.mode) && ui.queueAuto) {
+            const queued = inferenceQueue.enqueue(() => execute(shortcut));
+            const position = inferenceQueue.length();
+            report('info', `Na fila · ${shortcut.label} · ${position} pendente(s)`);
+            syncQueueBadge({ running: true });
+            queued
+                .catch(error => fail(friendlyError(error)))
+                .finally(() => {
+                    activeCancellable = null;
+                    closeLivePanel();
+                    syncQueueBadge();
+                });
+            return;
+        }
+
+        if (busy) {
+            report('info', 'Ocupado — aguarde a operação atual');
             return;
         }
 
@@ -671,10 +770,7 @@ export function createActions({ settings }) {
             .finally(() => {
                 busy = false;
                 activeCancellable = null;
-                if (livePanel) {
-                    livePanel.close();
-                    livePanel = null;
-                }
+                closeLivePanel();
                 syncQueueBadge();
             });
     }

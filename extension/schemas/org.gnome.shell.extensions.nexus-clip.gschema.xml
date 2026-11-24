@@ -120,5 +120,11 @@
       <default>true</default>
       <summary>Show a persistent on-screen badge while the FIFO has work</summary>
     </key>
+    <!-- Opt-out "queue by nature": inference actions are serialized instead of
+         rejecting a second press with "busy". -->
+    <key name="queue-auto" type="b">
+      <default>true</default>
+      <summary>Serialize inference actions through a FIFO instead of blocking</summary>
+    </key>
   </schema>
 </schemalist>

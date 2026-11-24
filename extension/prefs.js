@@ -187,7 +187,7 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         const commandRow = new Adw.ActionRow({
             title: 'Tecla de comandos Super',
             subtitle:
-                'Super+; abre a barra · V/C/X/Q/N/D/Z/H executa · 1–5 enfileira modelos',
+                'Super+; abre a barra · C=coletar V=escrever X=mover · 1–5 enfileira modelos',
         });
         const commandButton = new Gtk.Button({
             label: this._accelLabel(this._settings.get_string('command-accel')),
@@ -276,6 +276,8 @@ export default class NexusClipPreferences extends ExtensionPreferences {
             title: 'Ação',
             model: Gtk.StringList.new(MODES.map(mode => modeLabel(mode))),
             selected: Math.max(0, MODES.indexOf(shortcut.mode)),
+            // The popup inherits the row width; without this it clips labels.
+            width_request: 340,
         });
         expander.add_row(modeRow);
 
@@ -591,6 +593,14 @@ export default class NexusClipPreferences extends ExtensionPreferences {
         });
         this._settings.bind('queue-badge', badgeRow, 'active', 0);
         group.add(badgeRow);
+
+        const autoRow = new Adw.SwitchRow({
+            title: 'Fila por natureza',
+            subtitle:
+                'Coleções e processamentos entram numa fila serial; desative para voltar ao modo ocupado',
+        });
+        this._settings.bind('queue-auto', autoRow, 'active', 0);
+        group.add(autoRow);
 
         const secondsRow = new Adw.SpinRow({
             title: 'Duração do estado (segundos)',

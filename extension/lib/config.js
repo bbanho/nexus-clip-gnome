@@ -56,6 +56,7 @@ export function readUiConfig(settings) {
         statusSeconds: settings.get_int('status-seconds'),
         historyLimit: settings.get_int('history-limit'),
         queueBadge: settings.get_boolean('queue-badge'),
+        queueAuto: settings.get_boolean('queue-auto'),
     };
 }
 
